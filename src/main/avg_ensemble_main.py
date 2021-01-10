@@ -14,6 +14,7 @@ from src.config import config
 import logging
 import sys
 
+from itertools import islice
 np.seterr(all='raise')
 
 
@@ -60,10 +61,28 @@ def submission(model, data_loader, device):
 
     return predicts
 
+def get_dataset(args):
+    data_path = args.data_path + args.dataset_name + args.campaign_id
+    train_data_file_name = 'train.ctr.txt'
+    train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
+
+    test_data_file_name = 'test.ctr.txt'
+    test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
+
+    field_nums = train_fm.shape[1] - 1  # 特征域的数量
+
+    with open(data_path + 'feat.ctr.txt') as feat_f:
+        feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
+
+    train_data = train_fm
+    test_data = test_fm
+
+    return train_data, test_data, field_nums, feature_nums
 
 if __name__ == '__main__':
-    campaign_id = '3476/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
-    args, train_data, test_data, field_nums, feature_nums = config.init_parser(campaign_id)
+    campaign_id = '2259/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    args = config.init_parser(campaign_id)
+    train_data, test_data, field_nums, feature_nums = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)

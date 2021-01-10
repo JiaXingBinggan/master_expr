@@ -7,100 +7,207 @@ import argparse
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
+from itertools import islice
 import random
-
-def separate_day_data(datapath, is_separate_data):
-    file_name = 'train.csv'
-    data_path = datapath + file_name
-    if is_separate_data:
-        day_to_weekday = {4: '6', 5: '7', 6: '8', 0: '9', 1: '10', 2: '11', 3: '12'}
-        train_data = pd.read_csv(data_path, header=None).drop([0])
-        train_data.iloc[:, 1] = train_data.iloc[:, 1].astype(int)
-        print('###### separate datas from train day ######\n')
-        day_data_indexs = []
-        for key in day_to_weekday.keys():
-            day_datas = train_data[train_data.iloc[:, 1] == key]
-            day_indexs = day_datas.index
-            day_data_indexs.append([int(day_to_weekday[key]), day_indexs[0] - 1, day_indexs[-1] - 1])
-
-        day_data_indexs_df = pd.DataFrame(data=day_data_indexs)
-        day_data_indexs_df.to_csv(datapath + 'day_indexs.csv', index=None, header=None)
 
 def to_libsvm_encode(datapath):
     print('###### to libsvm encode ######\n')
-    train_path = datapath + 'train.csv'
-    train_encode = data_path + 'train_bid.txt'
-    feature_index = datapath + 'featindex_bid.txt'
+    oses = ["windows", "ios", "mac", "android", "linux"]
+    browsers = ["chrome", "sogou", "maxthon", "safari", "firefox", "theworld", "opera", "ie"]
 
-    field = ['weekday', 'hour', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
-             'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser', 'usertag']
+    f1s = ["weekday", "hour", "IP", "region", "city", "adexchange", "domain", "slotid", "slotwidth", "slotheight",
+           "slotvisibility", "slotformat", "creative", "advertiser"]
 
-    table = collections.defaultdict(lambda: 0)
+    f1sp = ["useragent", "slotprice"]
 
-    # 为特征名建立编号, filed
-    def field_index(x):
-        index = field.index(x)
-        return index
+    f2s = ["weekday,region"]
 
-    def getIndices(key):
-        indices = table.get(key)
-        if indices is None:
-            indices = len(table)
-            table[key] = indices
-        return indices
+    def featTrans(name, content):
+        content = content.lower()
+        if name == "useragent":
+            operation = "other"
+            for o in oses:
+                if o in content:
+                    operation = o
+                    break
+            browser = "other"
+            for b in browsers:
+                if b in content:
+                    browser = b
+                    break
+            return operation + "_" + browser
+        if name == "slotprice":
+            price = int(content)
+            if price > 100:
+                return "101+"
+            elif price > 50:
+                return "51-100"
+            elif price > 10:
+                return "11-50"
+            elif price > 0:
+                return "1-10"
+            else:
+                return "0"
 
-    feature_indices = set()
-    with open(train_encode, 'w') as outfile:
-        for e, row in enumerate(DictReader(open(train_path)), start=1):
-            features = []
-            for k, v in row.items():
-                if k in field:
-                    if len(v) > 0:
-                        if v == 'null':
-                            current_v = 'other'
-                        else:
-                            current_v = v
-                            if k == 'usertag':
-                                current_v = '_'.join(list(set(v.split(',')))[:5]) # usertags是按照出现频率逐渐下降排序的,所以只取前5个
+    def getTags(content):
+        if content == '\n' or len(content) == 0:
+            return ["null"]
+        return content.strip().split(',')[:5]
 
-                        kv = k + '_' + current_v
-                        features.append('{0}'.format(getIndices(kv)))
-                        feature_indices.add(kv + '\t' + str(getIndices(kv)))
-                    else:
-                        kv = k + '_' + 'other'
-                        print(kv)
-                        features.append('{0}'.format(getIndices(kv)))
+    day_indexs = pd.read_csv(datapath + 'day_indexs.csv', header=None).values.astype(int)
+    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
+    test_indexs = day_indexs[day_indexs[:, 0] == 12][0]
 
-            if e % 100000 == 0:
-                print(datetime.now(), 'creating train.txt...', e)
+    columns = list(islice(open(datapath + 'train.csv', 'r'), 0, 1))
 
-            outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
+    # initialize
+    namecol = {}
+    featindex = {}
+    maxindex = 0
+    fi = columns + list(islice(open(datapath + 'train.csv', 'r'), int(train_indexs[1]), int(train_indexs[2]) + 1))
+    first = True
 
-    featvalue = sorted(table.items(), key=operator.itemgetter(1), reverse=True)
+    featindex['truncate'] = maxindex
+    maxindex += 1
 
-    fo = open(feature_index, 'w')
-    for t, fv in enumerate(featvalue, start=1):
-        if t > len(field):
-            k = fv[0].split('_')[0]
-            idx = field_index(k)
-            fo.write(str(idx) + ':' + fv[0] + '\t' + str(fv[1]) + '\n')
-        else:
-            fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
+    for line in fi:
+        s = line.split(',')
+        if first:
+            first = False
+            for i in range(0, len(s)):
+                namecol[s[i].strip()] = i
+                if i > 0:
+                    featindex[str(i) + ':other'] = maxindex
+                    maxindex += 1
+            continue
+        for f in f1s:
+            col = namecol[f]
+            content = s[col]
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                featindex[feat] = maxindex
+                maxindex += 1
+        for f in f1sp:
+            col = namecol[f]
+            content = featTrans(f, s[col])
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                featindex[feat] = maxindex
+                maxindex += 1
+        col = namecol["usertag"]
+        tags = getTags(s[col])
+        # for tag in tags:
+        feat = str(col) + ':' + ''.join(tags)
+        if feat not in featindex:
+            featindex[feat] = maxindex
+            maxindex += 1
+
+    print('feature size: ' + str(maxindex))
+    featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
+    fo = open(datapath + 'feat.bid.txt', 'w')
+    fo.write(str(maxindex) + '\n')
+    for fv in featvalue:
+        fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
+    fo.close()
+
+    # indexing train
+    print('indexing ' + datapath + 'train.csv')
+    fi = columns + list(islice(open(datapath + 'train.csv', 'r'), int(train_indexs[1]), int(train_indexs[2]) + 1))
+    fo = open(datapath + 'train.bid.txt', 'w')
+
+    first = True
+    for line in fi:
+        if first:
+            first = False
+            continue
+        s = line.split(',')
+        fo.write(s[0] + ',' + s[23] + ',' + s[2] + ',' + s[4][8: 12])  # click + winning price + hour + timestamp
+        index = featindex['truncate']
+        fo.write(',' + str(index))
+        for f in f1s:  # every direct first order feature
+            col = namecol[f]
+            content = s[col]
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        for f in f1sp:
+            col = namecol[f]
+            content = featTrans(f, s[col])
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        col = namecol["usertag"]
+        tags = getTags(s[col])
+        # for tag in tags:
+        feat = str(col) + ':' + ''.join(tags)
+        if feat not in featindex:
+            feat = str(col) + ':other'
+        index = featindex[feat]
+        fo.write(',' + str(index))
+        fo.write('\n')
+    fo.close()
+
+    # indexing test
+    print('indexing ' + datapath + 'test.csv')
+
+    fi = columns + list(islice(open(datapath + 'train.csv', 'r'), int(test_indexs[1]), int(test_indexs[2]) + 1))
+
+    fo = open(datapath + 'test.bid.txt', 'w')
+
+    first = True
+    for line in fi:
+        if first:
+            first = False
+            continue
+        s = line.split(',')
+        fo.write(s[0] + ',' + s[23] + ',' + s[2] + ',' + s[4][8: 12])  # click + winning price + hour + timestamp
+        index = featindex['truncate']
+        fo.write(',' + str(index))
+        for f in f1s:  # every direct first order feature
+            col = namecol[f]
+            if col >= len(s):
+                print('col: ' + str(col))
+                print(line)
+            content = s[col]
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        for f in f1sp:
+            col = namecol[f]
+            content = featTrans(f, s[col])
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        col = namecol["usertag"]
+        tags = getTags(s[col])
+        # for tag in tags:
+        feat = str(col) + ':' + ''.join(tags)
+        if feat not in featindex:
+            feat = str(col) + ':other'
+        index = featindex[feat]
+        fo.write(',' + str(index))
+        fo.write('\n')
     fo.close()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3427/', help='1458, 2259, 3386')
+    parser.add_argument('--campaign_id', default='3386/', help='1458, 3358, 3386, 3427')
     parser.add_argument('--is_to_csv', default=True)
     parser.add_argument('--is_separate_data', default=True)
 
     args = parser.parse_args()
 
     data_path = args.data_path + args.dataset_name + args.campaign_id
-
-    separate_day_data(data_path, args.is_separate_data)
 
     to_libsvm_encode(data_path)
 

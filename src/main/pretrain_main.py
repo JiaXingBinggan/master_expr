@@ -9,6 +9,8 @@ from sklearn.metrics import roc_auc_score
 import src.models.p_model as Model
 import src.models.creat_data as Data
 
+from itertools import islice
+
 import torch
 import torch.nn as nn
 import torch.utils.data
@@ -174,7 +176,9 @@ def main(model, model_name, train_data_loader, test_data_loader, optimizer, loss
     for i in range(args.early_stop_iter):
         os.remove(args.save_param_dir + args.campaign_id + model_name + str(i) + '.pth')
 
-    return test_predicts
+    train_predicts, train_auc = submission(test_model, train_data_loader, device)
+
+    return test_predicts, train_predicts
 
 
 def eva_stopping(valid_aucs, valid_losses, type, args):  # early stopping
@@ -209,10 +213,31 @@ class ctrThread(threading.Thread):
         except Exception:
             return None
 
+
+def get_dataset(args):
+    data_path = args.data_path + args.dataset_name + args.campaign_id
+    train_data_file_name = 'train.ctr.txt'
+    train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
+
+    test_data_file_name = 'test.ctr.txt'
+    test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
+
+    field_nums = train_fm.shape[1] - 1  # 特征域的数量
+
+    with open(data_path + 'feat.ctr.txt') as feat_f:
+        feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
+
+    train_data = train_fm
+    test_data = test_fm
+
+    return train_data, test_data, field_nums, feature_nums
+
+
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '3476/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
-    args, train_data, test_data, field_nums, feature_nums = config.init_parser(campaign_id)
+    campaign_id = '3358/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    args = config.init_parser(campaign_id)
+    train_data, test_data, field_nums, feature_nums = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)
@@ -229,8 +254,15 @@ if __name__ == '__main__':
     stream_handler.setLevel(logging.INFO)
     logger.addHandler(stream_handler)
 
-    if not os.path.exists(args.save_param_dir + args.campaign_id):
-        os.mkdir(args.save_param_dir + args.campaign_id)
+    log_dirs = [args.save_log_dir, args.save_log_dir + args.campaign_id]
+    for log_dir in log_dirs:
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+
+    param_dirs = [args.save_param_dir, args.save_param_dir + args.campaign_id]
+    for param_dir in param_dirs:
+        if not os.path.exists(param_dir):
+            os.mkdir(param_dir)
 
     test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
     test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
@@ -239,15 +271,18 @@ if __name__ == '__main__':
 
     device = torch.device(args.device)  # 指定运行设备
 
-    model_list = np.array('LR,FM,FNN'.split(','))
+    model_list = np.array(args.ensemble_models.split(','))
     # choose_models = model_list[np.random.choice(len(model_list), 5, replace=False)]
     choose_models = model_list
     logger.info(campaign_id)
     logger.info('Models ' + ','.join(choose_models) + ' have been trained')
 
     test_predict_arr_dicts = {}
+    train_predict_arr_dicts = {}
+
     for model_name in choose_models:
         test_predict_arr_dicts.setdefault(model_name, [])
+        train_predict_arr_dicts.setdefault(model_name, [])
 
     train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
@@ -263,15 +298,21 @@ if __name__ == '__main__':
             FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM' + 'best.pth')
             model.load_embedding(FM_pretain_args)
 
-        current_model_test_predicts = main(model, model_name, train_data_loader, test_data_loader,
+        current_model_test_predicts , current_model_train_predicts = main(model, model_name, train_data_loader, test_data_loader,
                                      optimizer, loss, device, args)
 
         test_predict_arr_dicts[model_name].append(current_model_test_predicts)
 
+        train_predict_arr_dicts[model_name].append(current_model_train_predicts)
+
     for key in test_predict_arr_dicts.keys():
-        submission_path = args.data_path + args.dataset_name + args.campaign_id + key + '/'  # ctr 预测结果存放文件夹位置
-        if not os.path.exists(submission_path):
-            os.mkdir(submission_path)
+        submission_path = args.data_path + args.dataset_name + args.campaign_id + key + '/' # ctr 预测结果存放文件夹位置
+
+        sub_dirs = [args.data_path + args.dataset_name + args.campaign_id + key + '/',
+                    args.data_path + args.dataset_name + args.campaign_id + key + '/' + args.model_name + '/']
+        for sub_dir in sub_dirs:
+            if not os.path.exists(sub_dir):
+                os.mkdir(sub_dir)
 
         # 测试集submission
         final_sub = np.mean(test_predict_arr_dicts[key], axis=0)
@@ -288,3 +329,21 @@ if __name__ == '__main__':
                                                                                  args.campaign_id, final_auc))
         else:
             logger.info('Model {}, dataset {}, test auc {}\n'.format(key, args.dataset_name, final_auc))
+
+    for key in train_predict_arr_dicts.keys():
+        train_predict_arr_dicts[key] = np.mean(train_predict_arr_dicts[key], axis=0).flatten().tolist()
+    train_predict_arr_dicts['label'] = train_data[:, 0].tolist()
+
+    train_predict_df = pd.DataFrame(data=train_predict_arr_dicts)
+    train_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
+                            + 'train.ctr' + str(args.ensemble_nums) + '.txt', index=None)
+    
+    for key in test_predict_arr_dicts.keys():
+        test_predict_arr_dicts[key] = np.mean(test_predict_arr_dicts[key], axis=0).flatten().tolist()
+
+    test_predict_arr_dicts['label'] = test_data[:, 0].tolist()
+    test_predict_df = pd.DataFrame(data=test_predict_arr_dicts)
+    test_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
+                            + 'test.ctr' + str(args.ensemble_nums) + '.txt', index=None)
+    
+    

@@ -131,3 +131,11 @@ dmypy.json
 .idea/
 
 /data/
+
+
+/RLIB/models/model_params/
+/RLIB/main/logs/
+
+/src/models/model_params/
+/src/main/logs/
+

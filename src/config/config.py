@@ -18,17 +18,16 @@ def map_f(line):
 
 def get_dataset(datapath, dataset_name, campaign_id):
     data_path = datapath + dataset_name + campaign_id
-    train_data_file_name = 'train_.txt'
+    train_data_file_name = 'train.ctr.txt'
     train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
 
-    test_data_file_name = 'test_.txt'
+    test_data_file_name = 'test.ctr.txt'
     test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
 
     field_nums = train_fm.shape[1] - 1  # 特征域的数量
 
-    feature_index_name = 'featindex.txt'
-    feature_index = pd.read_csv(data_path + feature_index_name, header=None).values
-    feature_nums = int(feature_index[-1, 0].split('\t')[1]) + 1  # 特征数量
+    with open(data_path + 'feat.ctr.txt') as feat_f:
+        feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
     train_data = train_fm
     test_data = test_fm
@@ -94,9 +93,6 @@ def init_parser(campaign_id):
     # 设置随机数种子
     setup_seed(args.seed)
 
-    train_data, test_data, field_nums, feature_nums = get_dataset(args.data_path, args.dataset_name,
-                                                                            args.campaign_id)
-
-    return args, train_data, test_data, field_nums, feature_nums
+    return args
 
 

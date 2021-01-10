@@ -140,7 +140,7 @@ class WideAndDeep(nn.Module):
 
         layers = list()
 
-        neuron_nums = [200, 300, 100]
+        neuron_nums = [200, 300, 100] # recited paper
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
             # layers.append(nn.BatchNorm1d(neuron_num))

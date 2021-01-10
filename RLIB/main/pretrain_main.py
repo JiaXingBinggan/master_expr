@@ -59,8 +59,9 @@ def map_fm(line):
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
+    # click + winning price + hour + timestamp + encode
     train_data = pd.read_csv(data_path + 'train.bid.txt', header=None).values.astype(int)
-    field_nums = train_data.shape[1] - 2
+    field_nums = train_data.shape[1] - 4
 
     test_data = pd.read_csv(data_path + 'test.bid.txt', header=None).values.astype(int)
 
@@ -217,10 +218,20 @@ class ctrThread(threading.Thread):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '3427/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3358/' # 1458, 3358, 3386, 3427, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, field_nums, feature_nums = get_dataset(args)
+
+    log_dirs = [args.save_log_dir, args.save_log_dir + args.campaign_id]
+    for log_dir in log_dirs:
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+
+    param_dirs = [args.save_param_dir, args.save_param_dir + args.campaign_id]
+    for param_dir in param_dirs:
+        if not os.path.exists(param_dir):
+            os.mkdir(param_dir)
 
     # 设置随机数种子
     setup_seed(args.seed)
@@ -237,19 +248,16 @@ if __name__ == '__main__':
     stream_handler.setLevel(logging.INFO)
     logger.addHandler(stream_handler)
 
-    if not os.path.exists(args.save_param_dir + args.campaign_id):
-        os.mkdir(args.save_param_dir + args.campaign_id)
-
-    test_dataset = Data.libsvm_dataset(test_data[:, 2:], test_data[:, 0])
+    # click + winning price + hour + timestamp + encode
+    test_dataset = Data.libsvm_dataset(test_data[:, 4:], test_data[:, 0])
     test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
 
     loss = nn.BCELoss()
 
     device = torch.device(args.device)  # 指定运行设备
 
-    model_list = np.array('FM'.split(','))
     # choose_models = model_list[np.random.choice(len(model_list), 5, replace=False)]
-    choose_models = model_list
+    choose_models = [args.ctr_model_name]
     logger.info(campaign_id)
     logger.info('Models ' + ','.join(choose_models) + ' have been trained')
 
@@ -257,7 +265,8 @@ if __name__ == '__main__':
     for model_name in choose_models:
         test_predict_arr_dicts.setdefault(model_name, [])
 
-    train_dataset = Data.libsvm_dataset(train_data[:, 2:], train_data[:, 0])
+    # click + winning price + hour + timestamp + encode
+    train_dataset = Data.libsvm_dataset(train_data[:, 4:], train_data[:, 0])
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
 
     threads = []
@@ -278,8 +287,12 @@ if __name__ == '__main__':
 
     for key in test_predict_arr_dicts.keys():
         submission_path = args.data_path + args.dataset_name + args.campaign_id + key + '/' + args.model_name + '/'  # ctr 预测结果存放文件夹位置
-        if not os.path.exists(submission_path):
-            os.mkdir(submission_path)
+
+        sub_dirs = [args.data_path + args.dataset_name + args.campaign_id + key + '/',
+                    args.data_path + args.dataset_name + args.campaign_id + key + '/' + args.model_name + '/']
+        for sub_dir in sub_dirs:
+            if not os.path.exists(sub_dir):
+                os.mkdir(sub_dir)
 
         # 测试集submission
         final_sub = np.mean(test_predict_arr_dicts[key], axis=0)
@@ -296,3 +309,22 @@ if __name__ == '__main__':
                                                                                  args.campaign_id, final_auc))
         else:
             logger.info('Model {}, dataset {}, test auc {}\n'.format(key, args.dataset_name, final_auc))
+
+    ctr_model = get_model(args.ctr_model_name, feature_nums, field_nums, args.latent_dims).to(device)
+    pretrain_params = torch.load(args.save_param_dir + args.campaign_id + args.ctr_model_name + 'best.pth')
+    ctr_model.load_state_dict(pretrain_params)
+    
+    train_ctrs = ctr_model(torch.LongTensor(train_data[:, 4:]).to(args.device)).detach().cpu().numpy()
+
+    test_ctrs = ctr_model(torch.LongTensor(test_data[:, 4:]).to(args.device)).detach().cpu().numpy()
+    
+    # click + winning price + hour + timestamp + encode
+    train_data = np.concatenate([train_data[:, 0:1], train_ctrs, train_data[:, 1: 2], train_data[:, 2: 3]], axis=1)
+    test_data = np.concatenate([test_data[:, 0:1], test_ctrs, test_data[:, 1: 2], test_data[:, 2: 3]], axis=1)
+    
+    data_path = args.data_path + args.dataset_name + args.campaign_id
+    train_df = pd.DataFrame(data=train_data)
+    train_df.to_csv(data_path + 'train.rlib.txt', index=None)
+
+    test_df = pd.DataFrame(data=test_data)
+    test_df.to_csv(data_path + 'test.rlib.txt', index=None)
