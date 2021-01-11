@@ -165,7 +165,7 @@ def test(rl_model, ensemble_nums, data_loader, device):
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
             actions, c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
-
+            print(actions)
             y, rewards, return_c_actions, return_ctrs = generate_preds(ensemble_nums, current_pretrain_y_preds, actions, ensemble_c_actions, c_actions,
                                                           labels, device, mode='test')
 
@@ -257,8 +257,8 @@ def get_dataset(args):
     datapath = args.data_path + args.dataset_name + args.campaign_id
 
     columns = ['label'] + args.ensemble_models.split(',')
-    train_data = pd.read_csv(datapath + 'train.rl_ctr.txt')[columns].values.astype(float)
-    test_data = pd.read_csv(datapath + 'test.rl_ctr.txt')[columns].values.astype(float)
+    train_data = pd.read_csv(datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
+    test_data = pd.read_csv(datapath + 'test.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
 
     return train_data, test_data
 
@@ -360,7 +360,7 @@ if __name__ == '__main__':
         s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
         transitions = torch.cat(
-            [s_t, c_actions, d_q_values, ensemble_d_actions.float(), rewards, s_t_],
+            [s_t, return_c_actions, d_q_values, ensemble_d_actions.float(), rewards, s_t_],
             dim=1)
 
         rl_model.store_transition(transitions)
@@ -381,12 +381,13 @@ if __name__ == '__main__':
             val_rewards_records.append(test_rewards)
             timesteps.append(intime_steps)
             val_aucs.append(auc)
+            print(rl_model.memory.beta)
 
             train_critics.append(tmp_train_ctritics)
 
-            rl_model.temprature = max(rl_model.temprature_min,
-                                      rl_model.temprature_max - intime_steps *
-                                      (rl_model.temprature_max - rl_model.temprature_min) / (args.run_steps * 0.8))
+            rl_model.temprature =  max(rl_model.temprature_min,
+                                       rl_model.temprature_max - intime_steps *
+                                       (rl_model.temprature_max - rl_model.temprature_min) / (args.run_steps * 0.8))
 
             early_aucs.append([record_param_steps, auc])
             early_rewards.append([record_param_steps, test_rewards])
@@ -407,6 +408,7 @@ if __name__ == '__main__':
         intime_steps += batchs.shape[0]
 
     logger.info('Final gumbel Softmax temprature is {}'.format(rl_model.temprature))
+
     train_end_time = datetime.datetime.now()
 
     '''
@@ -434,30 +436,37 @@ if __name__ == '__main__':
     test_predict_arrs.append(test_predicts)
 
     prob_weights_df = pd.DataFrame(data=test_prob_weights)
-    prob_weights_df.to_csv(submission_path + 'test_prob_weights' + '.csv', header=None)
+    prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
+                           + args.sample_type + '.csv', header=None)
 
     actions_df = pd.DataFrame(data=test_actions)
-    actions_df.to_csv(submission_path + 'test_actions' + '.csv', header=None)
+    actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
+                      + args.sample_type + '.csv', header=None)
 
     valid_aucs_df = pd.DataFrame(data=val_aucs)
-    valid_aucs_df.to_csv(submission_path + 'val_aucs' + '.csv', header=None)
+    valid_aucs_df.to_csv(submission_path + 'val_aucs_' + str(args.ensemble_nums) + '_'
+                         + args.sample_type + '.csv', header=None)
 
     val_rewards_records = {'rewards': val_rewards_records, 'timesteps': timesteps}
     val_rewards_records_df = pd.DataFrame(data=val_rewards_records)
-    val_rewards_records_df.to_csv(submission_path + 'val_reward_records' + '.csv', index=None)
+    val_rewards_records_df.to_csv(submission_path + 'val_reward_records_' + str(args.ensemble_nums) + '_'
+                                  + args.sample_type + '.csv', index=None)
 
     train_critics_df = pd.DataFrame(data=train_critics)
-    train_critics_df.to_csv(submission_path + 'train_critics' + '.csv', header=None)
+    train_critics_df.to_csv(submission_path + 'train_critics_' + str(args.ensemble_nums) + '_'
+                            + args.sample_type + '.csv', header=None)
 
     final_subs = np.mean(test_predict_arrs, axis=0)
     final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
 
     rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
-    rl_ensemble_preds_df.to_csv(submission_path + 'submission.csv')
+    rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
+                                + args.sample_type + '.csv')
 
     rl_ensemble_aucs = [[final_auc]]
     rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
-    rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs.csv', header=None)
+    rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
+                               + args.sample_type + '.csv', header=None)
 
     if args.dataset_name == 'ipinyou/':
         logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,

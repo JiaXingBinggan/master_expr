@@ -60,12 +60,12 @@ def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
     # click + winning price + hour + timestamp + encode
-    train_data = pd.read_csv(data_path + 'train.bid.txt', header=None).values.astype(int)
+    train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
     field_nums = train_data.shape[1] - 4
 
-    test_data = pd.read_csv(data_path + 'test.bid.txt', header=None).values.astype(int)
+    test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
 
-    with open(data_path + 'feat.bid.txt') as feat_f:
+    with open(data_path + 'feat.bid.' + args.sample_type  + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
     return train_data, test_data, field_nums, feature_nums
@@ -173,7 +173,7 @@ def main(model, model_name, train_data_loader, test_data_loader, optimizer, loss
 
     test_predicts, test_auc = submission(test_model, test_data_loader, device)
     torch.save(test_model.state_dict(),
-               args.save_param_dir + args.campaign_id + model_name + 'best.pth')  # 存储最优参数
+               args.save_param_dir + args.campaign_id + model_name + args.sample_type + 'best.pth')  # 存储最优参数
 
     logger.info('Model {}, test auc {} [{}s]'.format(model_name, test_auc,
                                                               (end_time - start_time).seconds))
@@ -277,7 +277,7 @@ if __name__ == '__main__':
                                      weight_decay=args.weight_decay)
 
         if model_name == 'FNN':
-            FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM' + 'best.pth')
+            FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM' + args.sample_type + 'best.pth')
             model.load_embedding(FM_pretain_args)
 
         current_model_test_predicts = main(model, model_name, train_data_loader, test_data_loader,
@@ -297,12 +297,12 @@ if __name__ == '__main__':
         # 测试集submission
         final_sub = np.mean(test_predict_arr_dicts[key], axis=0)
         test_pred_df = pd.DataFrame(data=final_sub)
-        test_pred_df.to_csv(submission_path + 'test_submission.csv', header=None)
+        test_pred_df.to_csv(submission_path + 'test_submission_' + args.sample_type + '.csv', header=None)
 
         final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_sub.reshape(-1, 1).tolist())
         day_aucs = [[final_auc]]
         day_aucs_df = pd.DataFrame(data=day_aucs)
-        day_aucs_df.to_csv(submission_path + 'day_aucs.csv', header=None)
+        day_aucs_df.to_csv(submission_path + 'day_aucs_' + args.sample_type + '.csv', header=None)
 
         if args.dataset_name == 'ipinyou/':
             logger.info('Model {}, dataset {}, campain {}, test auc {}\n'.format(key, args.dataset_name,
@@ -311,7 +311,7 @@ if __name__ == '__main__':
             logger.info('Model {}, dataset {}, test auc {}\n'.format(key, args.dataset_name, final_auc))
 
     ctr_model = get_model(args.ctr_model_name, feature_nums, field_nums, args.latent_dims).to(device)
-    pretrain_params = torch.load(args.save_param_dir + args.campaign_id + args.ctr_model_name + 'best.pth')
+    pretrain_params = torch.load(args.save_param_dir + args.campaign_id + args.ctr_model_name + args.sample_type + 'best.pth')
     ctr_model.load_state_dict(pretrain_params)
     
     train_ctrs = ctr_model(torch.LongTensor(train_data[:, 4:]).to(args.device)).detach().cpu().numpy()
@@ -319,12 +319,17 @@ if __name__ == '__main__':
     test_ctrs = ctr_model(torch.LongTensor(test_data[:, 4:]).to(args.device)).detach().cpu().numpy()
     
     # click + winning price + hour + timestamp + encode
-    train_data = np.concatenate([train_data[:, 0:1], train_ctrs, train_data[:, 1: 2], train_data[:, 2: 3]], axis=1)
-    test_data = np.concatenate([test_data[:, 0:1], test_ctrs, test_data[:, 1: 2], test_data[:, 2: 3]], axis=1)
-    
+
+    train_data = {'clk': train_data[:, 0].tolist(), 'ctr': train_ctrs.flatten().tolist(), 'mprice': train_data[:, 1].tolist(),
+                  'hour': train_data[:, 2].tolist(), 'time_frac': train_data[:, 3].tolist()}
+
+    test_data = {'clk': test_data[:, 0].tolist(), 'ctr': test_ctrs.flatten().tolist(),
+                  'mprice': test_data[:, 1].tolist(),
+                  'hour': test_data[:, 2].tolist(), 'time_frac': test_data[:, 3].tolist()}
+
     data_path = args.data_path + args.dataset_name + args.campaign_id
     train_df = pd.DataFrame(data=train_data)
-    train_df.to_csv(data_path + 'train.rlib.txt', index=None)
+    train_df.to_csv(data_path + 'train.bid.' + args.sample_type + '.data', index=None)
 
     test_df = pd.DataFrame(data=test_data)
-    test_df.to_csv(data_path + 'test.rlib.txt', index=None)
+    test_df.to_csv(data_path + 'test.bid.' + args.sample_type + '.data', index=None)

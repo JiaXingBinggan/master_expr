@@ -52,61 +52,24 @@ def get_ctr_model(model_name, feature_nums, field_nums, latent_dims):
     elif model_name == 'AFM':
         return Model.AFM(feature_nums, field_nums, latent_dims)
 
-def get_model(action_nums, field_nums, latent_dims, lr, weight_decay, device):
+def get_model(action_nums, lr, weight_decay, device):
     RL_model = rlib.PolicyGradient(action_nums=action_nums,
-            field_nums=field_nums,
-            latent_dims=latent_dims,
             weight_decay=weight_decay,
             learning_rate=lr,
             device=device)
 
     return RL_model
 
-def map_fm(line):
-    return line.strip().split(',')
-
-def map_mprice(line):
-    return line.strip().split(',')[23]
-
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
-    day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
-    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
-    test_indexs = day_indexs[day_indexs[:, 0] == 12][0]
+    # clk,ctr,mprice,hour,time_frac
+    columns = ['clk', 'ctr', 'mprice', 'hour', 'time_frac']
+    train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.data')[columns]
+    test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.data')[columns]
 
-    with open(data_path + 'train_bid.txt', 'r') as fm:
-        train_fm = np.array(list(map(map_fm, list(islice(fm, int(train_indexs[1]), int(train_indexs[2]) + 1))))).astype(int)
-
-    with open(data_path + 'train_bid.txt', 'r') as fm:
-        test_fm = np.array(list(map(map_fm, list(islice(fm, int(test_indexs[1]), int(test_indexs[2]) + 1))))).astype(int)
-
-    with open(data_path + 'train.csv', 'r') as fm:
-        train_market_price = np.array(list(map(map_mprice, list(islice(fm, int(train_indexs[1]),
-                                                                       int(train_indexs[2]) + 1))))).astype(int).reshape([-1, 1])
-
-    with open(data_path + 'train.csv', 'r') as fm:
-        test_market_price = np.array(
-            list(map(map_mprice, list(islice(fm, int(test_indexs[1]), int(test_indexs[2]) + 1))))).astype(
-            int).reshape([-1, 1])
-
-    field_nums = train_fm.shape[1] - 1
-
-    with open(data_path + 'featindex_bid.txt') as feat_f:
-        feature_nums = int(list(islice(feat_f, 0, 1))[0].strip().split('\t')[1]) + 1
-
-    ctr_model = get_ctr_model(args.ctr_model_name, feature_nums, field_nums, args.latent_dims).to(args.device)
-    pretrain_params = torch.load(args.save_param_dir + args.campaign_id + args.ctr_model_name + 'best.pth')
-    ctr_model.load_state_dict(pretrain_params)
-
-    embedding_layer = Feature_Embedding(feature_nums, field_nums, args.latent_dims).to(args.device)
-    FM_pretrain_params = torch.load(args.save_param_dir + args.campaign_id + args.ctr_model_name + 'best.pth')
-    embedding_layer.load_embedding(FM_pretrain_params)
-
-    train_ctrs = ctr_model(torch.LongTensor(train_fm[:, 1:]).to(args.device)).detach().cpu().numpy()
-    train_ctr_price = np.concatenate([train_market_price, train_ctrs], axis=1)
+    train_ctr_price = train_data[['mprice', 'ctr']].values.astype(float)
     ascend_train_pctr_price = train_ctr_price[(-train_ctr_price[:, 1]).argsort()]
-    test_ctrs = ctr_model(torch.LongTensor(test_fm[:, 1:]).to(args.device)).detach().cpu().numpy()
 
     auc_ctr_threshold = 0
     expect_auc_num = 0
@@ -130,12 +93,12 @@ def get_dataset(args):
 
         auc_ctr_threshold = ascend_train_pctr_price[expect_auc_num - 1, 1]
 
-    train_data = np.concatenate([train_market_price, train_ctrs, train_fm], axis=1) # 需要把ctr直接加上吗?
-    test_data = np.concatenate([test_market_price, test_ctrs, test_fm], axis=1)
+    train_data = train_data[['mprice', 'ctr', 'clk']].values.astype(float)
+    test_data = test_data[['mprice', 'ctr', 'clk']].values.astype(float)
 
-    ecpc = np.sum(train_data[:, 0]) / np.sum(train_data[:, 1])
+    ecpc = np.sum(train_data[:, 0]) / np.sum(train_data[:, 2])
 
-    return train_data, test_data, train_fm, test_fm, field_nums, feature_nums, embedding_layer, auc_ctr_threshold, expect_auc_num, ecpc
+    return train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc
 
 def get_list_data(inputs, batch_size, shuffle):
     '''
@@ -177,10 +140,10 @@ def reward_func(clk, bid_price, mprice, ctr, ecpc, cost_on_no_clk_win_imp, no_cl
 
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3358/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
-    train_data, test_data, train_fm, test_fm, field_nums, feature_nums, embedding_layer, auc_ctr_threshold, expect_auc_num, ecpc\
+    train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc\
         = get_dataset(args)
 
     setup_seed(args.seed)
@@ -214,7 +177,7 @@ if __name__ == '__main__':
     logger.info(campaign_id)
     logger.info('RL model ' + args.model_name + ' has been training')
 
-    rl_model = get_model(args.action_nums, field_nums, args.latent_dims, args.lr, args.weight_decay, device)
+    rl_model = get_model(args.action_nums, args.lr, args.weight_decay, device)
 
     B = args.budget * args.budget_para[0]
     for ep in range(args.episodes):
@@ -227,17 +190,15 @@ if __name__ == '__main__':
         clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
 
         for t, data in enumerate(tqdm.tqdm(train_data, smoothing=0.0, mininterval=1.0)):
-            mprice, ctr, clk, features = data[data_mprice_index], data[data_ctr_index].item(), data[data_clk_index],\
-                                         torch.LongTensor(data[data_clk_index + 1:].astype(int)).unsqueeze(0).to(device)
+            mprice, ctr, clk = data[data_mprice_index], data[data_ctr_index].item(), data[data_clk_index]
 
             real_clks += clk
             if budget - mprice >= 0:
                 if ctr > auc_ctr_threshold:
-                    s_t = torch.cat([torch.unsqueeze(
+                    s_t = torch.unsqueeze(
                         torch.Tensor(np.array([(B - cost) / budget,
                                                (expect_auc_num - past_auc_num) / expect_auc_num,
-                                               ctr])).float().to(device), 0),
-                                        embedding_layer.forward(features)], dim=-1)
+                                               ctr])).float().to(device), 0)
 
                     bids += 1
                     bid_price = rl_model.choose_action(s_t)
@@ -261,8 +222,9 @@ if __name__ == '__main__':
                             cost_on_no_clk_win_imp += mprice
                             no_clk_win_imps += 1
 
-                    r_t = reward_func(clk, bid_price, mprice, ctr, ecpc, cost_on_no_clk_win_imp / cost if cost != 0 else 0,
-                                      no_clk_win_imps / imps if imps != 0 else 0,
+                    cost_on_no_clk_win_imp = cost_on_no_clk_win_imp / cost if cost != 0 else 0
+                    no_clk_win_imps = no_clk_win_imps / imps if imps != 0 else 0
+                    r_t = reward_func(clk, bid_price, mprice, ctr, ecpc, cost_on_no_clk_win_imp, no_clk_win_imps,
                     with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
 
                     rl_model.store_transition(s_t.detach().cpu().numpy().tolist(), bid_price, r_t)
@@ -283,11 +245,10 @@ if __name__ == '__main__':
         final_real_clks += clk
         if budget - mprice >= 0:
             if ctr > auc_ctr_threshold:
-                s_t = torch.cat([torch.unsqueeze(
+                s_t = torch.unsqueeze(
                     torch.Tensor(np.array([(B - final_cost) / budget,
                                            (expect_auc_num - past_auc_num) / expect_auc_num,
-                                           ctr])).float().to(device), 0),
-                    embedding_layer.forward(features)], dim=-1)
+                                           ctr])).float().to(device), 0)
 
                 final_bids += 1
                 bid_price = rl_model.choose_action(s_t)

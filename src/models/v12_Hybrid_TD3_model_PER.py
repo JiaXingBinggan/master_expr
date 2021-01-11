@@ -25,9 +25,9 @@ class Memory(object):
         self.epsilon = 1e-3  # 防止出现zero priority
         self.alpha = 0.6  # 取值范围(0,1)，表示td error对priority的影响
         self.beta = 0.2  # important sample， 从初始值到1
-        self.beta_min = 0.2
+        self.beta_min = 0.4
         self.beta_max = 1.0
-        self.beta_increment_per_sampling = 3e-8
+        self.beta_increment_per_sampling = 0.00001
         self.abs_err_upper = 1  # abs_err_upper和epsilon ，表明p优先级值的范围在[epsilon,abs_err_upper]之间，可以控制也可以不控制
 
         self.memory_size = memory_size
@@ -335,7 +335,7 @@ class Hybrid_TD3_Model():
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.learn_iter = 0
-        self.policy_freq = 5
+        self.policy_freq = 10
 
         self.temprature = 2.0
         self.temprature_max = 2.0
@@ -378,7 +378,8 @@ class Hybrid_TD3_Model():
 
         ensemble_c_actions = torch.softmax(c_action_means, dim=-1)
 
-        ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(d_q_values,
+                                                                temprature=self.temprature_min, hard=True), dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), c_action_means, ensemble_c_actions
 
@@ -449,14 +450,14 @@ class Hybrid_TD3_Model():
         self.Hybrid_Critic_.train()
 
         # sample
-        # choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
-        if self.memory.memory_counter > self.memory_size:
-            # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
-            sample_index = random.sample(range(self.memory_size), self.batch_size)
-        else:
-            sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
-
-        batch_memory = self.memory.memory[sample_index, :]
+        choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
+        # if self.memory.memory_counter > self.memory_size:
+        #     # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
+        #     sample_index = random.sample(range(self.memory_size), self.batch_size)
+        # else:
+        #     sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
+        #
+        # batch_memory = self.memory.memory[sample_index, :]
 
         b_s = batch_memory[:, :self.input_dims]
         b_c_a = batch_memory[:, self.input_dims: self.input_dims + self.action_nums]
@@ -474,8 +475,8 @@ class Hybrid_TD3_Model():
 
             # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.softmax(c_actions_means_next, dim=-1))
             # next_c_actions = torch.softmax(c_actions_means_next + torch.normal(c_actions_means_next, 0.2), dim=-1)
-            # next_c_actions = self.to_next_state_c_actions(next_d_actions, c_actions_means_next)
-            next_c_actions = c_actions_means_next
+            next_c_actions = self.to_next_state_c_actions(next_d_actions, c_actions_means_next)
+            # next_c_actions = c_actions_means_next
 
             q1_target, q2_target = \
                 self.Hybrid_Critic_.evaluate(b_s_, next_c_actions, next_d_actions)
@@ -485,11 +486,11 @@ class Hybrid_TD3_Model():
 
         q1, q2 = self.Hybrid_Critic.evaluate(b_s, b_c_a, b_d_a)
 
-        # critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
-        # critic_loss = (
-        # ISweights * (F.mse_loss(q1, q_target, reduction='none') + F.mse_loss(q2, q_target, reduction='none'))).mean()
+        critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
+        critic_loss = (
+        ISweights * (F.mse_loss(q1, q_target, reduction='none') + F.mse_loss(q2, q_target, reduction='none'))).mean()
 
-        critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
+        # critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
@@ -498,14 +499,14 @@ class Hybrid_TD3_Model():
 
         critic_loss_r = critic_loss.item()
 
-        # self.memory.batch_update(choose_idx, critic_td_error)
+        self.memory.batch_update(choose_idx, critic_td_error)
 
         if self.learn_iter % self.policy_freq == 0:
             c_actions_means, d_actions_q_values = self.Hybrid_Actor.evaluate(b_s)
 
             d_actions_q_values_ = gumbel_softmax_sample(logits=d_actions_q_values, temprature=self.temprature_min,
                                                         hard=False)
-            c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)  #
+            c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)
             # c_actions_means_ = c_actions_means
 
             # Hybrid_Actor

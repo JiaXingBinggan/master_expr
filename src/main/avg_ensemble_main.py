@@ -63,15 +63,15 @@ def submission(model, data_loader, device):
 
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
-    train_data_file_name = 'train.ctr.txt'
+    train_data_file_name = 'train.ctr.' + args.sample_type + '.txt'
     train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
 
-    test_data_file_name = 'test.ctr.txt'
+    test_data_file_name = 'test.ctr.' + args.sample_type + '.txt'
     test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
 
     field_nums = train_fm.shape[1] - 1  # 特征域的数量
 
-    with open(data_path + 'feat.ctr.txt') as feat_f:
+    with open(data_path + 'feat.ctr.' + args.sample_type + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
     train_data = train_fm
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     current_subs = []
     for model_name in choose_models:
         model = get_model(model_name, feature_nums, field_nums, args.latent_dims).to(device)
-        pretrain_params = torch.load(args.save_param_dir + args.campaign_id + model_name + 'best.pth')
+        pretrain_params = torch.load(args.save_param_dir + args.campaign_id + model_name + '_' + args.sample_type + '_best.pth')
         model.load_state_dict(pretrain_params)
 
         current_subs.append(submission(model, test_data_loader, device))
@@ -126,12 +126,14 @@ if __name__ == '__main__':
 
     final_subs = np.mean(current_subs, axis=0)
     ensemble_preds_df = pd.DataFrame(data=final_subs)
-    ensemble_preds_df.to_csv(submission_path + 'ensemble_' + str(args.ensemble_nums) + '_submission.csv')
+    ensemble_preds_df.to_csv(submission_path + 'ensemble_' + str(args.ensemble_nums)
+                             + '_' + args.sample_type + '_submission.csv')
 
     final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
     ensemble_aucs = [[final_auc]]
     ensemble_aucs_df = pd.DataFrame(data=ensemble_aucs)
-    ensemble_aucs_df.to_csv(submission_path + 'ensemble_' + str(args.ensemble_nums) + '_aucs.csv', header=None)
+    ensemble_aucs_df.to_csv(submission_path + 'ensemble_' + str(args.ensemble_nums)
+                            + '_' + args.sample_type + '_aucs.csv', header=None)
 
     if args.dataset_name == 'ipinyou/':
         logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,

@@ -24,7 +24,7 @@ def data_to_csv(datapath, is_to_csv):
     if is_to_csv:
         print('###### to csv.file ######\n')
         # 训练数据27个特征
-        with open(data_path + 'train.csv', 'w', newline='') as csvfile: # newline防止每两行就空一行
+        with open(data_path + 'train.all.csv', 'w', newline='') as csvfile: # newline防止每两行就空一行
             spamwriter = csv.writer(csvfile, dialect='excel') # 读要转换的txt文件，文件每行各词间以@@@字符分隔
             with open(data_path + file_name, 'r') as filein:
                 for i, line in enumerate(filein):
@@ -37,7 +37,7 @@ def data_to_csv(datapath, is_to_csv):
     if is_to_csv:
         print('###### to csv.file ######\n')
         # 训练数据27个特征
-        with open(data_path + 'test.csv', 'w', newline='') as csvfile:  # newline防止每两行就空一行
+        with open(data_path + 'test.all.csv', 'w', newline='') as csvfile:  # newline防止每两行就空一行
             spamwriter = csv.writer(csvfile, dialect='excel')  # 读要转换的txt文件，文件每行各词间以@@@字符分隔
             with open(data_path + file_name, 'r') as filein:
                 for i, line in enumerate(filein):
@@ -46,7 +46,7 @@ def data_to_csv(datapath, is_to_csv):
         print('test-data读写完毕')
 
 def separate_day_data(datapath, is_separate_data):
-    file_name = 'train.csv'
+    file_name = 'train.all.csv'
     data_path = datapath + file_name
     if is_separate_data:
         day_to_weekday = {4: '6', 5: '7', 6: '8', 0: '9', 1: '10', 2: '11', 3: '12'}
@@ -111,10 +111,8 @@ def to_libsvm_encode(datapath, sample_type):
     namecol = {}
     featindex = {}
     maxindex = 0
-    if not sample_type:
-        fi = open(datapath + 'train.csv', 'r')
-    else:
-        fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
+
+    fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
 
     first = True
 
@@ -155,10 +153,8 @@ def to_libsvm_encode(datapath, sample_type):
 
     print('feature size: ' + str(maxindex))
     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
-    if not sample_type:
-        fo = open(datapath + 'feat.ctr.txt', 'w')
-    else:
-        fo = open(datapath + 'feat.ctr.' + sample_type + '.txt', 'w')
+
+    fo = open(datapath + 'feat.ctr.' + sample_type + '.txt', 'w')
     fo.write(str(maxindex) + '\n')
     for fv in featvalue:
         fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
@@ -166,12 +162,8 @@ def to_libsvm_encode(datapath, sample_type):
 
     # indexing train
     print('indexing ' + datapath + 'train.' + sample_type + '.csv')
-    if not sample_type:
-        fi = open(datapath + 'train.csv', 'r')
-        fo = open(datapath + 'train.ctr.txt', 'w')
-    else:
-        fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
-        fo = open(datapath + 'train.ctr.' + sample_type + '.txt', 'w')
+    fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
+    fo = open(datapath + 'train.ctr.' + sample_type + '.txt', 'w')
 
     first = True
     for line in fi:
@@ -210,10 +202,9 @@ def to_libsvm_encode(datapath, sample_type):
     fo.close()
 
     # indexing test
-    print('indexing ' + datapath + 'test.csv')
+    print('indexing ' + datapath + 'test.all.csv')
 
-    fi = open(datapath + 'test.csv', 'r')
-
+    fi = open(datapath + 'test.all.csv', 'r')
     fo = open(datapath + 'test.ctr.' + sample_type + '.txt', 'w')
 
     first = True
@@ -259,7 +250,7 @@ def down_sample(data_path):
     # 负采样后达到的点击率
     CLICK_RATE = 0.001188  # 1:1000
 
-    train_data = pd.read_csv(data_path + 'train.csv').values
+    train_data = pd.read_csv(data_path + 'train.all.csv').values
     train_auc_num = len(train_data)
 
     click = np.sum(train_data[:, 0])
@@ -274,7 +265,7 @@ def down_sample(data_path):
 
     # 获取测试样本
     with open(data_path + 'train.down.csv', 'w') as fo:
-        fi = open(data_path + 'train.csv')
+        fi = open(data_path + 'train.all.csv')
         p = 0  # 原始正样本
         n = 0  # 原始负样本
         nn = 0  # 剩余的负样本
@@ -302,7 +293,7 @@ def down_sample(data_path):
 
 
 def rand_sample(data_path):
-    train_data = pd.read_csv(data_path + 'train.csv')
+    train_data = pd.read_csv(data_path + 'train.all.csv')
     train_down_data = pd.read_csv(data_path + 'train.down.csv')
 
     sample_indexs = random.sample(range(len(train_data)), len(train_down_data))
@@ -315,27 +306,29 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='1458/', help='1458, 2259, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='2259/', help='1458, 2259, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
     parser.add_argument('--is_separate_data', default=True)
-    parser.add_argument('--is_sample', default=True)
 
     setup_seed(1)
 
     args = parser.parse_args()
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
-    if not args.is_sample:
+    if args.is_to_csv:
         data_to_csv(data_path, args.is_to_csv)
-        separate_day_data(data_path, args.is_separate_data)
-        to_libsvm_encode(data_path, '')
-    else:
-        # down denotes down sample, rand denotes random sample
-        down_sample(data_path)
-        to_libsvm_encode(data_path, 'down')
 
-        rand_sample(data_path)
-        to_libsvm_encode(data_path, 'rand')
+    if args.is_separate_data:
+        separate_day_data(data_path, args.is_separate_data)
+
+    to_libsvm_encode(data_path, 'all')
+
+    # down denotes down sample, rand denotes random sample
+    down_sample(data_path)
+    to_libsvm_encode(data_path, 'down')
+
+    rand_sample(data_path)
+    to_libsvm_encode(data_path, 'rand')
 
 
 

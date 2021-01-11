@@ -19,18 +19,14 @@ def weight_init(layers):
 
 class Net(nn.Module):
     def __init__(self,
-                 field_nums,
-                 action_nums,
-                 latent_dims):
+                 action_nums):
         super(Net, self).__init__()
-        self.field_nums = field_nums
         self.action_nums = action_nums
-        self.latent_dims = latent_dims
 
         self.layers = list()
-        neuron_nums = [200, 300, 100]
+        neuron_nums = [32, 64, 16]
 
-        deep_input_dims = self.field_nums * (self.field_nums - 1) // 2 + self.field_nums * self.latent_dims + 3 # b,t,pctr,auc vectors
+        deep_input_dims = 3 # b,t,pctr
         for neuron_num in neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             # self.layers.append(nn.BatchNorm1d(neuron_num))
@@ -52,16 +48,12 @@ class PolicyGradient:
     def __init__(
             self,
             action_nums,
-            field_nums,
-            latent_dims,
             weight_decay=1e-5,
             learning_rate=0.01,
             reward_decay=1,
             device='cuda:0',
     ):
         self.action_nums = action_nums
-        self.field_nums = field_nums
-        self.latent_dims = latent_dims
         self.lr = learning_rate
         self.gamma = reward_decay
         self.weight_decay = weight_decay
@@ -69,7 +61,7 @@ class PolicyGradient:
 
         self.ep_states, self.ep_as, self.ep_rs = [], [], [] # 状态，动作，奖励，在一轮训练后存储
 
-        self.policy_net = Net(self.field_nums, self.action_nums, self.latent_dims).to(self.device)
+        self.policy_net = Net(self.action_nums).to(self.device)
 
         self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 

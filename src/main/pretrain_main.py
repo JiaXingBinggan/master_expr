@@ -6,6 +6,7 @@ import os
 import argparse
 import random
 from sklearn.metrics import roc_auc_score
+from sklearn.model_selection import train_test_split
 import src.models.p_model as Model
 import src.models.creat_data as Data
 
@@ -23,6 +24,7 @@ import threading
 import time
 
 from src.config import config as config
+
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -118,7 +120,7 @@ def submission(model, data_loader, device):
 
     return predicts, roc_auc_score(targets, predicts)
 
-def main(model, model_name, train_data_loader, test_data_loader, optimizer, loss, device, args):
+def main(model, model_name, train_data_loader, val_data_loader, test_data_loader, optimizer, loss, device, args):
     valid_aucs = []
     valid_losses = []
     early_stop_index = 0
@@ -136,18 +138,15 @@ def main(model, model_name, train_data_loader, test_data_loader, optimizer, loss
         torch.save(model.state_dict(), args.save_param_dir + args.campaign_id + model_name + str(
             np.mod(epoch, args.early_stop_iter)) + '.pth')
 
-        auc, valid_loss = test(model, test_data_loader, loss, device)
+        auc, valid_loss = test(model, val_data_loader, loss, device)
         valid_aucs.append(auc)
         valid_losses.append(valid_loss)
 
         train_end_time = datetime.datetime.now()
         logger.info(
-            'Model {}, epoch {}, train loss {}, val auc {}, val loss {} [{}s]'.format(model_name,
-                                                                                               epoch,
-                                                                                               train_average_loss,
-                                                                                               auc, valid_loss,
-                                                                                               (
-                                                                                               train_end_time - train_start_time).seconds))
+            'Model {}, epoch {}, train loss {}, val auc {}, '
+            'val loss {} [{}s]'.format(model_name, epoch,train_average_loss,auc, valid_loss,
+                                       (train_end_time - train_start_time).seconds))
 
 
         if eva_stopping(valid_aucs, valid_losses, args.early_stop_type, args):
@@ -168,7 +167,7 @@ def main(model, model_name, train_data_loader, test_data_loader, optimizer, loss
 
     test_predicts, test_auc = submission(test_model, test_data_loader, device)
     torch.save(test_model.state_dict(),
-               args.save_param_dir + args.campaign_id + model_name + 'best.pth')  # 存储最优参数
+               args.save_param_dir + args.campaign_id + model_name + '_' + args.sample_type + '_best.pth')  # 存储最优参数
 
     logger.info('Model {}, test auc {} [{}s]'.format(model_name, test_auc,
                                                               (end_time - start_time).seconds))
@@ -216,28 +215,32 @@ class ctrThread(threading.Thread):
 
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
-    train_data_file_name = 'train.ctr.txt'
+    train_data_file_name = 'train.ctr.' + args.sample_type + '.txt'
     train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
 
-    test_data_file_name = 'test.ctr.txt'
+    test_data_file_name = 'test.ctr.' + args.sample_type + '.txt'
     test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
 
     field_nums = train_fm.shape[1] - 1  # 特征域的数量
 
-    with open(data_path + 'feat.ctr.txt') as feat_f:
+    with open(data_path + 'feat.ctr.' + args.sample_type + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
     train_data = train_fm
+    train_fm, val_fm, train_label, val_label = train_test_split(train_data[:, 1:], train_data[:, 0],
+                                                                test_size=0.2, random_state=args.seed)
+    train_data = np.concatenate([train_label.reshape(-1, 1), train_fm], axis=1)
+    val_data = np.concatenate([val_label.reshape(-1, 1), val_fm], axis=1)
     test_data = test_fm
 
-    return train_data, test_data, field_nums, feature_nums
+    return train_data, val_data, test_data, field_nums, feature_nums
 
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '3476/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3358/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-    train_data, test_data, field_nums, feature_nums = get_dataset(args)
+    train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)
@@ -265,7 +268,7 @@ if __name__ == '__main__':
             os.mkdir(param_dir)
 
     test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
-    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
+    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.test_batch_size, num_workers=8)
 
     loss = nn.BCELoss()
 
@@ -287,6 +290,9 @@ if __name__ == '__main__':
     train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
 
+    val_dataset = Data.libsvm_dataset(val_data[:, 1:], train_data[:, 0])
+    val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.test_batch_size, num_workers=8)
+
     threads = []
     for model_name in choose_models:
         model = get_model(model_name, feature_nums, field_nums, args.latent_dims).to(device)
@@ -295,11 +301,12 @@ if __name__ == '__main__':
                                      weight_decay=args.weight_decay)
 
         if model_name == 'FNN':
-            FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM' + 'best.pth')
+            FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM_' + args.sample_type + '_best.pth')
             model.load_embedding(FM_pretain_args)
 
-        current_model_test_predicts , current_model_train_predicts = main(model, model_name, train_data_loader, test_data_loader,
-                                     optimizer, loss, device, args)
+        current_model_test_predicts , current_model_train_predicts = main(model, model_name, train_data_loader,
+                                                                          val_data_loader, test_data_loader,
+                                                                          optimizer, loss, device, args)
 
         test_predict_arr_dicts[model_name].append(current_model_test_predicts)
 
@@ -317,12 +324,12 @@ if __name__ == '__main__':
         # 测试集submission
         final_sub = np.mean(test_predict_arr_dicts[key], axis=0)
         test_pred_df = pd.DataFrame(data=final_sub)
-        test_pred_df.to_csv(submission_path + 'test_submission.csv', header=None)
+        test_pred_df.to_csv(submission_path + 'test_submission_' + args.sample_type + '.csv', index=None)
 
         final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_sub.reshape(-1, 1).tolist())
         day_aucs = [[final_auc]]
         day_aucs_df = pd.DataFrame(data=day_aucs)
-        day_aucs_df.to_csv(submission_path + 'day_aucs.csv', header=None)
+        day_aucs_df.to_csv(submission_path + 'day_aucs_' + args.sample_type + '.csv', index=None)
 
         if args.dataset_name == 'ipinyou/':
             logger.info('Model {}, dataset {}, campain {}, test auc {}\n'.format(key, args.dataset_name,
@@ -336,7 +343,7 @@ if __name__ == '__main__':
 
     train_predict_df = pd.DataFrame(data=train_predict_arr_dicts)
     train_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
-                            + 'train.rl_ctr.txt', index=None)
+                            + 'train.rl_ctr.' + args.sample_type + '.txt', index=None)
     
     for key in test_predict_arr_dicts.keys():
         test_predict_arr_dicts[key] = np.mean(test_predict_arr_dicts[key], axis=0).flatten().tolist()
@@ -344,6 +351,6 @@ if __name__ == '__main__':
     test_predict_arr_dicts['label'] = test_data[:, 0].tolist()
     test_predict_df = pd.DataFrame(data=test_predict_arr_dicts)
     test_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
-                            + 'test.rl_ctr.txt', index=None)
+                            + 'test.rl_ctr.' + args.sample_type + '.txt', index=None)
     
     
