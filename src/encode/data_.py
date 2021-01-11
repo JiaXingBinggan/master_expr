@@ -315,26 +315,29 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='2259/', help='1458, 2259, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='1458/', help='1458, 2259, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
     parser.add_argument('--is_separate_data', default=True)
-    parser.add_argument('--sample_type', default='rand', help='down, rand')
-    # '' denotes no sample, down denotes down sample, rand denotes random sample
+    parser.add_argument('--is_sample', default=True)
 
     setup_seed(1)
 
     args = parser.parse_args()
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
-    if not args.sample_type:
+    if not args.is_sample:
         data_to_csv(data_path, args.is_to_csv)
-        # separate_day_data(data_path, args.is_separate_data)
-    elif args.sample_type == 'down':
-        down_sample(data_path)
+        separate_day_data(data_path, args.is_separate_data)
+        to_libsvm_encode(data_path, '')
     else:
-        rand_sample(data_path)
+        # down denotes down sample, rand denotes random sample
+        down_sample(data_path)
+        to_libsvm_encode(data_path, 'down')
 
-    to_libsvm_encode(data_path, args.sample_type)
+        rand_sample(data_path)
+        to_libsvm_encode(data_path, 'rand')
+
+
 
 
 
