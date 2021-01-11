@@ -53,7 +53,7 @@ def init_parser(campaign_id):
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--save_param_dir', default='../models/model_params/')
     parser.add_argument('--save_log_dir', default='../main/logs/')
-    parser.add_argument('--seed', type=int, default=1234)
+    parser.add_argument('--seed', type=int, default=1024)
 
     # for ensemble
     parser.add_argument('--ensemble_nums', type=int, default=3, help='3,5,7')
@@ -61,20 +61,20 @@ def init_parser(campaign_id):
 
     # for RL training
     parser.add_argument('--rl_model_name', default='Hybrid_TD3')
-    parser.add_argument('--init_lr_a', type=float, default=3e-3)
+    parser.add_argument('--init_lr_a', type=float, default=3e-4)
     parser.add_argument('--end_lr_a', type=float, default=1e-4)
-    parser.add_argument('--init_lr_c', type=float, default=3e-3)
+    parser.add_argument('--init_lr_c', type=float, default=3e-4)
     parser.add_argument('--end_lr_c', type=float, default=3e-4)
     parser.add_argument('--init_exploration_rate', type=float, default=1)
     parser.add_argument('--end_exploration_rate', type=float, default=0.1)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
-    parser.add_argument('--rl_batch_size', type=int, default=32)
-    parser.add_argument('--rl_iter_size', type=int, default=8)
-    parser.add_argument('--rl_train_iters', type=int, default=1)
+    parser.add_argument('--rl_batch_size', type=int, default=128)
+    parser.add_argument('--rl_iter_size', type=int, default=16)
+    parser.add_argument('--rl_train_iters', type=int, default=2)
     parser.add_argument('--rl_gen_batch_size', type=int, default=4096*128)
     parser.add_argument('--memory_size', type=int, default=500000) # 感觉需要再调调
 
-    parser.add_argument('--reward_epsilon', type=float, default=3e-2)
+    parser.add_argument('--reward_epsilon', type=float, default=2e-2)
     parser.add_argument('--run_steps', type=float, default=1e6)
     parser.add_argument('--stop_steps', type=float, default=4e6)
     parser.add_argument('--record_times', type=int, default=100)

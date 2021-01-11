@@ -449,7 +449,14 @@ class Hybrid_TD3_Model():
         self.Hybrid_Critic_.train()
 
         # sample
-        choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
+        # choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
+        if self.memory.memory_counter > self.memory_size:
+            # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
+            sample_index = random.sample(range(self.memory_size), self.batch_size)
+        else:
+            sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
+
+        batch_memory = self.memory.memory[sample_index, :]
 
         b_s = batch_memory[:, :self.input_dims]
         b_c_a = batch_memory[:, self.input_dims: self.input_dims + self.action_nums]
@@ -478,10 +485,11 @@ class Hybrid_TD3_Model():
 
         q1, q2 = self.Hybrid_Critic.evaluate(b_s, b_c_a, b_d_a)
 
-        critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
+        # critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
+        # critic_loss = (
+        # ISweights * (F.mse_loss(q1, q_target, reduction='none') + F.mse_loss(q2, q_target, reduction='none'))).mean()
 
-        critic_loss = (
-        ISweights * (F.mse_loss(q1, q_target, reduction='none') + F.mse_loss(q2, q_target, reduction='none'))).mean()
+        critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
@@ -490,7 +498,7 @@ class Hybrid_TD3_Model():
 
         critic_loss_r = critic_loss.item()
 
-        self.memory.batch_update(choose_idx, critic_td_error)
+        # self.memory.batch_update(choose_idx, critic_td_error)
 
         if self.learn_iter % self.policy_freq == 0:
             c_actions_means, d_actions_q_values = self.Hybrid_Actor.evaluate(b_s)

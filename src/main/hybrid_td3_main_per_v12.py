@@ -120,14 +120,14 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
             current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * -1
+            current_basic_rewards[current_with_clk_indexs] * 0
         )
 
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
             current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * -1
+            current_basic_rewards[current_without_clk_indexs] * 0
         )
 
         # print(-labels[with_action_indexs].float() * current_y_preds - (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) *
@@ -257,8 +257,8 @@ def get_dataset(args):
     datapath = args.data_path + args.dataset_name + args.campaign_id
 
     columns = ['label'] + args.ensemble_models.split(',')
-    train_data = pd.read_csv(datapath + 'train.ctr' + str(args.ensemble_nums) + '.txt')[columns].values.astype(float)
-    test_data = pd.read_csv(datapath + 'test.ctr' + str(args.ensemble_nums) + '.txt')[columns].values.astype(float)
+    train_data = pd.read_csv(datapath + 'train.rl_ctr.txt')[columns].values.astype(float)
+    test_data = pd.read_csv(datapath + 'test.rl_ctr.txt')[columns].values.astype(float)
 
     return train_data, test_data
 

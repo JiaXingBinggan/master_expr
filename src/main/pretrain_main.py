@@ -235,7 +235,7 @@ def get_dataset(args):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '3358/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3476/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     train_data, test_data, field_nums, feature_nums = get_dataset(args)
 
@@ -336,7 +336,7 @@ if __name__ == '__main__':
 
     train_predict_df = pd.DataFrame(data=train_predict_arr_dicts)
     train_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
-                            + 'train.ctr' + str(args.ensemble_nums) + '.txt', index=None)
+                            + 'train.rl_ctr.txt', index=None)
     
     for key in test_predict_arr_dicts.keys():
         test_predict_arr_dicts[key] = np.mean(test_predict_arr_dicts[key], axis=0).flatten().tolist()
@@ -344,6 +344,6 @@ if __name__ == '__main__':
     test_predict_arr_dicts['label'] = test_data[:, 0].tolist()
     test_predict_df = pd.DataFrame(data=test_predict_arr_dicts)
     test_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
-                            + 'test.ctr' + str(args.ensemble_nums) + '.txt', index=None)
+                            + 'test.rl_ctr.txt', index=None)
     
     

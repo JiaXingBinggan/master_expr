@@ -8,6 +8,11 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 import random
+import numpy as np
+
+def setup_seed(seed):
+    np.random.seed(seed)
+    random.seed(seed)
 
 '''
  只取训练集做测试
@@ -58,7 +63,7 @@ def separate_day_data(datapath, is_separate_data):
         day_data_indexs_df.to_csv(datapath + 'day_indexs.csv', index=None, header=None)
 
 
-def to_libsvm_encode(datapath):
+def to_libsvm_encode(datapath, sample_type):
     print('###### to libsvm encode ######\n')
     oses = ["windows", "ios", "mac", "android", "linux"]
     browsers = ["chrome", "sogou", "maxthon", "safari", "firefox", "theworld", "opera", "ie"]
@@ -106,7 +111,11 @@ def to_libsvm_encode(datapath):
     namecol = {}
     featindex = {}
     maxindex = 0
-    fi = open(datapath + 'train.csv', 'r')
+    if not sample_type:
+        fi = open(datapath + 'train.csv', 'r')
+    else:
+        fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
+
     first = True
 
     featindex['truncate'] = maxindex
@@ -146,16 +155,23 @@ def to_libsvm_encode(datapath):
 
     print('feature size: ' + str(maxindex))
     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
-    fo = open(datapath + 'feat.ctr.txt', 'w')
+    if not sample_type:
+        fo = open(datapath + 'feat.ctr.txt', 'w')
+    else:
+        fo = open(datapath + 'feat.ctr.' + sample_type + '.txt', 'w')
     fo.write(str(maxindex) + '\n')
     for fv in featvalue:
         fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
     fo.close()
 
     # indexing train
-    print('indexing ' + datapath + 'train.csv')
-    fi = open(datapath + 'train.csv', 'r')
-    fo = open(datapath + 'train.ctr.txt', 'w')
+    print('indexing ' + datapath + 'train.' + sample_type + '.csv')
+    if not sample_type:
+        fi = open(datapath + 'train.csv', 'r')
+        fo = open(datapath + 'train.ctr.txt', 'w')
+    else:
+        fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
+        fo = open(datapath + 'train.ctr.' + sample_type + '.txt', 'w')
 
     first = True
     for line in fi:
@@ -198,7 +214,7 @@ def to_libsvm_encode(datapath):
 
     fi = open(datapath + 'test.csv', 'r')
 
-    fo = open(datapath + 'test.ctr.txt', 'w')
+    fo = open(datapath + 'test.ctr.' + sample_type + '.txt', 'w')
 
     first = True
     for line in fi:
@@ -239,23 +255,86 @@ def to_libsvm_encode(datapath):
         fo.write('\n')
     fo.close()
 
+def down_sample(data_path):
+    # 负采样后达到的点击率
+    CLICK_RATE = 0.001188  # 1:1000
+
+    train_data = pd.read_csv(data_path + 'train.csv').values
+    train_auc_num = len(train_data)
+
+    click = np.sum(train_data[:, 0])
+    total = train_auc_num
+    train_sample_rate = click / (CLICK_RATE * (total - click))
+    # 原始数据中的点击和曝光总数
+    print('clicks: {0} impressions: {1}\n'.format(click, total))
+    print('test_sample_rate is:', train_sample_rate)
+
+    # 获取训练样本
+    # test_sample_rate = test_sample_rate
+
+    # 获取测试样本
+    with open(data_path + 'train.down.csv', 'w') as fo:
+        fi = open(data_path + 'train.csv')
+        p = 0  # 原始正样本
+        n = 0  # 原始负样本
+        nn = 0  # 剩余的负样本
+        c = 0  # 总数
+        labels = 0
+        for t, line in enumerate(fi, start=1):
+            if t == 1:
+                fo.write(line)
+            else:
+                c += 1
+                label = line.split(',')[0]  # 是否点击标签
+                if int(label) == 0:
+                    n += 1
+                    if random.randint(0, train_auc_num) <= train_auc_num * train_sample_rate:  # down sample, 选择对应数据量的负样本
+                        fo.write(line)
+                        nn += 1
+                else:
+                    p += 1
+                    fo.write(line)
+
+            if t % 10000 == 0:
+                print(t)
+        fi.close()
+    print('数据负采样完成')
+
+
+def rand_sample(data_path):
+    train_data = pd.read_csv(data_path + 'train.csv')
+    train_down_data = pd.read_csv(data_path + 'train.down.csv')
+
+    sample_indexs = random.sample(range(len(train_data)), len(train_down_data))
+
+    train_all_sample_data = train_data.iloc[sample_indexs, :]
+
+    train_all_sample_data.to_csv(data_path + 'train.rand.csv', index=None)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='1458/', help='1458, 2259, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='2259/', help='1458, 2259, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
     parser.add_argument('--is_separate_data', default=True)
+    parser.add_argument('--sample_type', default='rand', help='down, rand')
+    # '' denotes no sample, down denotes down sample, rand denotes random sample
+
+    setup_seed(1)
 
     args = parser.parse_args()
-
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
-    data_to_csv(data_path, args.is_to_csv)
+    if not args.sample_type:
+        data_to_csv(data_path, args.is_to_csv)
+        # separate_day_data(data_path, args.is_separate_data)
+    elif args.sample_type == 'down':
+        down_sample(data_path)
+    else:
+        rand_sample(data_path)
 
-    separate_day_data(data_path, args.is_separate_data)
-
-    to_libsvm_encode(data_path)
+    to_libsvm_encode(data_path, args.sample_type)
 
 
 
