@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from src.config import config
+from torch.autograd import Variable
 
 def weight_init(layers):
     # source: The other layers were initialized from uniform distributions
@@ -42,7 +43,35 @@ class Net(nn.Module):
 
     def forward(self, input):
         actions_value = self.mlp(input)
+
         return actions_value
+
+def gumbel_softmax_sample(logits, temprature=1.0, hard=False, eps=1e-20, uniform_seed=1.0):
+    U = Variable(torch.FloatTensor(*logits.shape).uniform_().cuda(), requires_grad=False)
+    y = logits + -torch.log(-torch.log(U + eps) + eps)
+    y = F.softmax(y / temprature, dim=-1)
+
+    if hard:
+        y_hard = onehot_from_logits(y)
+        y = (y_hard - y).detach() + y
+
+    return y
+
+def onehot_from_logits(logits, eps=0.0):
+    """
+    Given batch of logits, return one-hot sample using epsilon greedy strategy
+    (based on given epsilon)
+    """
+    # get best (according to current policy) actions in one-hot form
+    argmax_acs = (logits == logits.max(1, keepdim=True)[0]).float()
+    if eps == 0.0:
+        return argmax_acs
+    # get random actions in one-hot form
+    rand_acs = Variable(torch.eye(logits.shape[1])[[np.random.choice(
+        range(logits.shape[1]), size=logits.shape[0])]], requires_grad=False)
+    # chooses between best and random actions using epsilon greedy
+    return torch.stack([argmax_acs[i] if r > eps else rand_acs[i] for i, r in
+                        enumerate(torch.rand(logits.shape[0]))])
 
 class PolicyGradient:
     def __init__(
@@ -66,21 +95,23 @@ class PolicyGradient:
         self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
     def loss_func(self, all_act_prob, acts, vt):
-        neg_log_prob = torch.sum(-torch.log(all_act_prob.gather(1, acts - 1))).to(self.device)
+        neg_log_prob = -torch.log(all_act_prob.gather(1, acts - 1)).to(self.device)
         loss = torch.mean(torch.mul(neg_log_prob, vt)).to(self.device)
+
         return loss
 
     # 依据概率来选择动作，本身具有随机性
     def choose_action(self, state):
         self.policy_net.train()
         torch.cuda.empty_cache()
-        prob_weights = torch.softmax(self.policy_net.forward(state), dim=-1).cpu().detach().numpy()
-        action = np.random.choice(range(1, self.action_nums + 1), p=prob_weights.ravel())
+        prob_weights = self.policy_net.forward(state)
+        print(torch.normal(prob_weights, 0.5))
+        action = torch.max(torch.normal(prob_weights, 0.5))[1].item()
         return action
 
-    def choose_best_action(self, state):
-        self.policy_net.eval()
-        return torch.max(self.policy_net.forward(state), 1)[1].item()
+    # def choose_best_action(self, state):
+    #     self.policy_net.eval()
+    #     return torch.max(self.policy_net.forward(state), 1)[1].item()
 
     # 储存一回合的s,a,r；因为每回合训练
     def store_transition(self, s, a, r):
@@ -106,12 +137,13 @@ class PolicyGradient:
 
     def learn(self):
         torch.cuda.empty_cache()
+        self.policy_net.train()
 
         # 对每一回合的奖励，进行折扣计算以及归一化
         discounted_ep_rs_norm = self.discount_and_norm_rewards()
         states = torch.FloatTensor(self.ep_states).to(self.device)
         acts = torch.unsqueeze(torch.LongTensor(self.ep_as), 1).to(self.device)
-        vt = torch.FloatTensor(discounted_ep_rs_norm).to(self.device)
+        vt = torch.FloatTensor(discounted_ep_rs_norm).view(-1,1).to(self.device)
 
         all_act_probs = self.policy_net.forward(states).squeeze(1)
 
@@ -123,20 +155,4 @@ class PolicyGradient:
 
         # 训练完后清除训练数据，开始下一轮
         self.ep_states, self.ep_as, self.ep_rs = [], [], []
-        return discounted_ep_rs_norm
-
-    # 只存储获得最优收益（点击）那一轮的参数
-    def para_store_iter(self, test_results):
-        max = 0
-        if len(test_results) >= 3:
-            for i in range(len(test_results)):
-                if i == 0:
-                    max = test_results[i]
-                elif i != len(test_results) - 1:
-                    if test_results[i] > test_results[i - 1] and test_results[i] > test_results[i + 1]:
-                        if max < test_results[i]:
-                            max = test_results[i]
-                else:
-                    if test_results[i] > max:
-                        max = test_results[i]
-        return max
+        return loss.item()

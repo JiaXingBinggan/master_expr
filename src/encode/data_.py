@@ -62,6 +62,110 @@ def separate_day_data(datapath, is_separate_data):
         day_data_indexs_df = pd.DataFrame(data=day_data_indexs)
         day_data_indexs_df.to_csv(datapath + 'day_indexs.csv', index=None, header=None)
 
+# def to_libsvm_encode(datapath, sample_type):
+#     train_path = datapath + 'train.' + sample_type + '.csv'
+#     train_encode = datapath + 'train.ctr.' + sample_type + '.txt'
+#     test_path = datapath + 'test.all.csv'
+#     test_encode = datapath + 'test.ctr.' + sample_type + '.txt'
+#     feature_index = datapath + 'featindex.ctr.' + sample_type + '.txt'
+#
+#     field = ['hour', 'weekday', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
+#              'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser', 'usertag']
+#
+#     table = collections.defaultdict(lambda: 0)
+#
+#     # 为特征名建立编号, filed
+#     def field_index(x):
+#         index = field.index(x)
+#         return index
+#
+#     def getIndices(key):
+#         indices = table.get(key)
+#         if indices is None:
+#             indices = len(table)
+#             table[key] = indices
+#         return indices
+#
+#     feature_indices = set()
+#     with open(train_encode, 'w') as outfile:
+#         for e, row in enumerate(DictReader(open(train_path)), start=1):
+#             features = []
+#             for k, v in row.items():
+#                 if k in field:
+#                     if len(v) > 0:
+#                         if k == 'usertag':
+#                             v = '-'.join(v.split(',')[:3])
+#                         elif k == 'slotprice':
+#                             price = int(v)
+#                             if price > 100:
+#                                 v = "101+"
+#                             elif price > 50:
+#                                 v = "51-100"
+#                             elif price > 10:
+#                                 v = "11-50"
+#                             elif price > 0:
+#                                 v = "1-10"
+#                             else:
+#                                 v = "0"
+#                         kv = k + '_' + v
+#                         features.append('{0}'.format(getIndices(kv)))
+#                         feature_indices.add(kv + '\t' + str(getIndices(kv)))
+#                     else:
+#                         kv = k + '_' + 'other'
+#                         features.append('{0}'.format(getIndices(kv)))
+#
+#             if e % 100000 == 0:
+#                 print(datetime.now(), 'creating train.txt...', e)
+#
+#             outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
+#
+#     with open(test_encode, 'w') as outfile:
+#         for e, row in enumerate(DictReader(open(test_path)), start=1):
+#             features = []
+#             for k, v in row.items():
+#                 if k in field:
+#                     if len(v) > 0:
+#                         if k == 'usertag':
+#                             v = '-'.join(v.split(',')[:3])
+#                         elif k == 'slotprice':
+#                             price = int(v)
+#                             if price > 100:
+#                                 v = "101+"
+#                             elif price > 50:
+#                                 v = "51-100"
+#                             elif price > 10:
+#                                 v = "11-50"
+#                             elif price > 0:
+#                                 v = "1-10"
+#                             else:
+#                                 v = "0"
+#                         kv = k + '_' + v
+#                         indices = table.get(kv)
+#                         if indices is None:
+#                             kv = k + '_' + 'other'
+#                             features.append('{0}'.format(getIndices(kv)))
+#                         else:
+#                             features.append('{0}'.format(getIndices(kv)))
+#                     else:
+#                         kv = k + '_' + 'other'
+#                         features.append('{0}'.format(getIndices(kv)))
+#
+#             if e % 100000 == 0:
+#                 print(datetime.now(), 'creating test.txt...', e)
+#
+#             outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
+#
+#     featvalue = sorted(table.items(), key=operator.itemgetter(1))
+#     fo = open(feature_index, 'w')
+#     fo.write(str(featvalue[-1][1]) + '\n')
+#     for t, fv in enumerate(featvalue, start=1):
+#         if t > len(field):
+#             k = fv[0].split('_')[0]
+#             idx = field_index(k)
+#             fo.write(str(idx) + ':' + fv[0] + '\t' + str(fv[1]) + '\n')
+#         else:
+#             fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
+#     fo.close()
 
 def to_libsvm_encode(datapath, sample_type):
     print('###### to libsvm encode ######\n')
@@ -105,7 +209,7 @@ def to_libsvm_encode(datapath, sample_type):
     def getTags(content):
         if content == '\n' or len(content) == 0:
             return ["null"]
-        return content.strip().split(',')[:5]
+        return content.strip().split(',')[:3]
 
     # initialize
     namecol = {}
@@ -306,9 +410,9 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='2259/', help='1458, 2259, 3358, 3386, 3427, 3476')
-    parser.add_argument('--is_to_csv', default=True)
-    parser.add_argument('--is_separate_data', default=True)
+    parser.add_argument('--campaign_id', default='3476/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--is_to_csv', default=False)
+    parser.add_argument('--is_separate_data', default=False)
 
     setup_seed(1)
 
@@ -324,10 +428,10 @@ if __name__ == '__main__':
     to_libsvm_encode(data_path, 'all')
 
     # down denotes down sample, rand denotes random sample
-    down_sample(data_path)
+    # down_sample(data_path)
     to_libsvm_encode(data_path, 'down')
 
-    rand_sample(data_path)
+    # rand_sample(data_path)
     to_libsvm_encode(data_path, 'rand')
 
 

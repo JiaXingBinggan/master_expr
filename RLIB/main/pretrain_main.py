@@ -58,17 +58,22 @@ def map_fm(line):
 
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
-
+    
+    day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
+    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
+    
     # click + winning price + hour + timestamp + encode
-    train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
-    field_nums = train_data.shape[1] - 4
+    train_fm = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
+    field_nums = train_fm.shape[1] - 4
+    train_data = train_fm[0: int(train_indexs[1]), :]
+    val_data = train_fm[int(train_indexs[1]): int(train_indexs[2]) + 1, :]
 
     test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
 
-    with open(data_path + 'feat.bid.' + args.sample_type  + '.txt') as feat_f:
+    with open(data_path + 'featindex.bid.' + args.sample_type + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
-    return train_data, test_data, field_nums, feature_nums
+    return train_data, val_data, test_data, field_nums, feature_nums
 
 
 def train(model, optimizer, data_loader, loss, device):
@@ -102,6 +107,7 @@ def test(model, data_loader, loss, device):
             y = model(features)
 
             test_loss = loss(y, labels.float())
+
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
             intervals += 1
@@ -123,7 +129,7 @@ def submission(model, data_loader, device):
 
     return predicts, roc_auc_score(targets, predicts)
 
-def main(model, model_name, train_data_loader, test_data_loader, optimizer, loss, device, args):
+def main(model, model_name, train_data_loader, val_data_loader, test_data_loader, optimizer, loss, device, args):
     valid_aucs = []
     valid_losses = []
     early_stop_index = 0
@@ -141,7 +147,7 @@ def main(model, model_name, train_data_loader, test_data_loader, optimizer, loss
         torch.save(model.state_dict(), args.save_param_dir + args.campaign_id + model_name + str(
             np.mod(epoch, args.early_stop_iter)) + '.pth')
 
-        auc, valid_loss = test(model, test_data_loader, loss, device)
+        auc, valid_loss = test(model, val_data_loader, loss, device)
         valid_aucs.append(auc)
         valid_losses.append(valid_loss)
 
@@ -218,10 +224,10 @@ class ctrThread(threading.Thread):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '3358/' # 1458, 3358, 3386, 3427, avazu
+    campaign_id = '1458/' # 1458, 3358, 3386, 3427, avazu
     args = config.init_parser(campaign_id)
 
-    train_data, test_data, field_nums, feature_nums = get_dataset(args)
+    train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)
 
     log_dirs = [args.save_log_dir, args.save_log_dir + args.campaign_id]
     for log_dir in log_dirs:
@@ -250,7 +256,10 @@ if __name__ == '__main__':
 
     # click + winning price + hour + timestamp + encode
     test_dataset = Data.libsvm_dataset(test_data[:, 4:], test_data[:, 0])
-    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
+    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1024, num_workers=8)
+
+    val_dataset = Data.libsvm_dataset(val_data[:, 4:], val_data[:, 0])
+    val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1024, num_workers=8)
 
     loss = nn.BCELoss()
 
@@ -280,7 +289,7 @@ if __name__ == '__main__':
             FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM' + args.sample_type + 'best.pth')
             model.load_embedding(FM_pretain_args)
 
-        current_model_test_predicts = main(model, model_name, train_data_loader, test_data_loader,
+        current_model_test_predicts = main(model, model_name, train_data_loader, val_data_loader, test_data_loader,
                                      optimizer, loss, device, args)
 
         test_predict_arr_dicts[model_name].append(current_model_test_predicts)
@@ -314,14 +323,14 @@ if __name__ == '__main__':
     pretrain_params = torch.load(args.save_param_dir + args.campaign_id + args.ctr_model_name + args.sample_type + 'best.pth')
     ctr_model.load_state_dict(pretrain_params)
     
-    train_ctrs = ctr_model(torch.LongTensor(train_data[:, 4:]).to(args.device)).detach().cpu().numpy()
+    val_ctrs = ctr_model(torch.LongTensor(val_data[:, 4:]).to(args.device)).detach().cpu().numpy() # 11
 
-    test_ctrs = ctr_model(torch.LongTensor(test_data[:, 4:]).to(args.device)).detach().cpu().numpy()
+    test_ctrs = ctr_model(torch.LongTensor(test_data[:, 4:]).to(args.device)).detach().cpu().numpy() # 12
     
     # click + winning price + hour + timestamp + encode
 
-    train_data = {'clk': train_data[:, 0].tolist(), 'ctr': train_ctrs.flatten().tolist(), 'mprice': train_data[:, 1].tolist(),
-                  'hour': train_data[:, 2].tolist(), 'time_frac': train_data[:, 3].tolist()}
+    train_data = {'clk': val_data[:, 0].tolist(), 'ctr': val_ctrs.flatten().tolist(), 'mprice': val_data[:, 1].tolist(),
+                  'hour': val_data[:, 2].tolist(), 'time_frac': val_data[:, 3].tolist()}
 
     test_data = {'clk': test_data[:, 0].tolist(), 'ctr': test_ctrs.flatten().tolist(),
                   'mprice': test_data[:, 1].tolist(),

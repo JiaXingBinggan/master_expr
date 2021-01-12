@@ -40,7 +40,7 @@ def init_parser(campaign_id):
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi, avazu')
     parser.add_argument('--campaign_id', default='2259/', help='1458, 3358, 3386, 3427, 3476, avazu')
     parser.add_argument('--model_name', default='LR', help='LR, FM, FFM, W&D, FNN, DeepFM, IPNN, OPNN, DCN, AFM')
-    parser.add_argument('--latent_dims', default=10)
+    parser.add_argument('--latent_dims', default=8)
     parser.add_argument('--epoch', type=int, default=100)
     parser.add_argument('--kfold', type=int, default=5)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
@@ -54,12 +54,12 @@ def init_parser(campaign_id):
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--save_param_dir', default='../models/model_params/')
     parser.add_argument('--save_log_dir', default='../main/logs/')
-    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--seed', type=int, default=1024)
 
     parser.add_argument('--sample_type', default='all', help='all, down, rand')
 
     # for ensemble
-    parser.add_argument('--ensemble_nums', type=int, default=3, help='3,5,7')
+    parser.add_argument('--ensemble_nums', type=int, default=7, help='3,5,7')
     parser.add_argument('--ensemble_models', default='LR,FM,FNN,IPNN,DCN')
 
     # for RL training

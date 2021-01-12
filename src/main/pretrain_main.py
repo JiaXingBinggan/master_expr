@@ -223,14 +223,15 @@ def get_dataset(args):
 
     field_nums = train_fm.shape[1] - 1  # 特征域的数量
 
-    with open(data_path + 'feat.ctr.' + args.sample_type + '.txt') as feat_f:
+    with open(data_path + 'featindex.ctr.' + args.sample_type + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
-    train_data = train_fm
-    train_fm, val_fm, train_label, val_label = train_test_split(train_data[:, 1:], train_data[:, 0],
-                                                                test_size=0.2, random_state=args.seed)
-    train_data = np.concatenate([train_label.reshape(-1, 1), train_fm], axis=1)
-    val_data = np.concatenate([val_label.reshape(-1, 1), val_fm], axis=1)
+    day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
+    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
+
+    train_data = train_fm[:train_indexs[1], :]
+    val_data = train_fm[train_indexs[1]:, :]
+
     test_data = test_fm
 
     return train_data, val_data, test_data, field_nums, feature_nums
@@ -238,7 +239,7 @@ def get_dataset(args):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '3358/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3476/' # 1458, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)
 

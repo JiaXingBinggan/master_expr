@@ -158,50 +158,22 @@ def bid_main(bid_prices, imp_datas, budget):
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
-    day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
-    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
-    test_indexs = day_indexs[day_indexs[:, 0] == 12][0]
+    # clk,ctr,mprice,hour,time_frac
+    columns = ['clk', 'ctr', 'mprice', 'hour', 'time_frac']
+    train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.data')[columns]
+    test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.data')[columns]
 
-    with open(data_path + 'train_bid.txt', 'r') as fm:
-        train_fm = np.array(list(map(map_fm, list(islice(fm, int(train_indexs[1]), int(train_indexs[2]) + 1))))).astype(
-            int)
+    train_data = train_data[['clk', 'ctr', 'mprice']].values.astype(float)
+    test_data = test_data[['clk', 'ctr', 'mprice']].values.astype(float)
 
-    with open(data_path + 'train_bid.txt', 'r') as fm:
-        test_fm = np.array(list(map(map_fm, list(islice(fm, int(test_indexs[1]), int(test_indexs[2]) + 1))))).astype(
-            int)
-
-    with open(data_path + 'train.csv', 'r') as fm:
-        train_market_price = np.array(list(map(map_mprice, list(islice(fm, int(train_indexs[1]),
-                                                                       int(train_indexs[2]) + 1))))).astype(
-            int).reshape([-1, 1])
-
-    with open(data_path + 'train.csv', 'r') as fm:
-        test_market_price = np.array(
-            list(map(map_mprice, list(islice(fm, int(test_indexs[1]), int(test_indexs[2]) + 1))))).astype(
-            int).reshape([-1, 1])
-
-    field_nums = train_fm.shape[1] - 1
-    with open(data_path + 'featindex_bid.txt') as feat_f:
-        feature_nums = int(list(islice(feat_f, 0, 1))[0].strip().split('\t')[1]) + 1
-
-    ctr_model = get_ctr_model(args.ctr_model_name, feature_nums, field_nums, args.latent_dims).to(args.device)
-    pretrain_params = torch.load(args.save_param_dir + args.campaign_id + args.ctr_model_name + 'best.pth')
-    ctr_model.load_state_dict(pretrain_params)
-    train_ctrs = ctr_model(torch.LongTensor(train_fm[:, 1:]).to(args.device)).detach().cpu().numpy()
-
-    test_ctrs = ctr_model(torch.LongTensor(test_fm[:, 1:]).to(args.device)).detach().cpu().numpy()
-
-    train_data = np.concatenate([train_fm[:, 0: 1], train_ctrs, train_market_price], axis=1)
-    test_data = np.concatenate([test_fm[:, 0: 1], test_ctrs, test_market_price], axis=1)
-
-    ecpc = np.sum(train_data[:, 2]) / np.sum(train_data[:, 0])
-    origin_ctr = np.sum(train_fm[:, 0]) / len(train_fm)
+    ecpc = np.sum(train_data[:, 0]) / np.sum(train_data[:, 2])
+    origin_ctr = np.sum(train_data[:, 0]) / len(train_data)
 
     return train_data, test_data, ecpc, origin_ctr
 
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr = get_dataset(args)
