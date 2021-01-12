@@ -70,7 +70,7 @@ def get_dataset(args):
 
     test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
 
-    with open(data_path + 'featindex.bid.' + args.sample_type + '.txt') as feat_f:
+    with open(data_path + 'feat.bid.' + args.sample_type + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
     return train_data, val_data, test_data, field_nums, feature_nums
@@ -224,7 +224,7 @@ class ctrThread(threading.Thread):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '1458/' # 1458, 3358, 3386, 3427, avazu
+    campaign_id = '3427/' # 1458, 3358, 3386, 3427, avazu
     args = config.init_parser(campaign_id)
 
     train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)

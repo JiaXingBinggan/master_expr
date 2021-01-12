@@ -4,7 +4,7 @@ import tqdm
 import datetime
 import os
 import random
-import RLIB.models.RL_brain as rlib
+import RLIB.models.RL_brain_dqn as rlib
 import RLIB.models.create_data as Data
 import RLIB.models.p_model as Model
 from RLIB.models.Feature_embedding import Feature_Embedding
@@ -30,6 +30,7 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
 
+
 def get_ctr_model(model_name, feature_nums, field_nums, latent_dims):
     if model_name == 'LR':
         return Model.LR(feature_nums)
@@ -52,11 +53,9 @@ def get_ctr_model(model_name, feature_nums, field_nums, latent_dims):
     elif model_name == 'AFM':
         return Model.AFM(feature_nums, field_nums, latent_dims)
 
-def get_model(action_nums, lr, weight_decay, device):
-    RL_model = rlib.PolicyGradient(action_nums=action_nums,
-            weight_decay=weight_decay,
-            learning_rate=lr,
-            device=device)
+
+def get_model(action_nums, lr, batch_size, memory_size, device):
+    RL_model = rlib.DQN(action_nums=action_nums, lr=lr, batch_size=batch_size, memory_size=memory_size, device=device)
 
     return RL_model
 
@@ -104,6 +103,7 @@ def get_dataset(args):
 
     return train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc
 
+
 def get_list_data(inputs, batch_size, shuffle):
     '''
     :param inputs: List type
@@ -120,12 +120,14 @@ def get_list_data(inputs, batch_size, shuffle):
 
         yield batch_inputs
 
+
 def get_next_batch(batch):
     return batch.__next__()
 
+
 def reward_func(clk, bid_price, mprice, ctr, ecpc, cost_on_no_clk_win_imp, no_clk_win_imps,
                 with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps):
-    print(50000 * ctr, mprice)
+    # print(50000 * ctr, mprice)
     if bid_price >= mprice:
         if clk:
             return (1 - np.power((bid_price - mprice) / mprice, 2))
@@ -138,6 +140,7 @@ def reward_func(clk, bid_price, mprice, ctr, ecpc, cost_on_no_clk_win_imp, no_cl
             return - (1 - with_clk_no_win_imps / with_clk_imps)
         else:
             return (1 - no_clk_no_win_imps / no_clk_imps)
+
 
 '''
 1458
@@ -166,7 +169,7 @@ if __name__ == '__main__':
     campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
-    train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc\
+    train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc \
         = get_dataset(args)
 
     setup_seed(args.seed)
@@ -202,7 +205,7 @@ if __name__ == '__main__':
 
     actions = np.array(list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10)))
 
-    rl_model = get_model(actions.shape[0], args.lr, args.weight_decay, device)
+    rl_model = get_model(actions.shape[0], args.lr, args.rl_batch_size, args.memory_size, device)
     B = args.budget * args.budget_para[0]
 
     train_losses = []
@@ -210,28 +213,27 @@ if __name__ == '__main__':
     expect_auc_num = len(train_data)
     logger.info('para:{}, budget:{}'.format(args.budget_para[0], B))
     logger.info('\tclks\treal_clks\tbids\timps\tcost')
+    done = 0
     for ep in range(args.episodes):
         budget = B
-        past_hour = 0
-        next_statistics = [0, 0, 0] # 用于记录临时特征remain_b,remain_t,next_ctr
+        next_statistics = [0, 0, 0]  # 用于记录临时特征remain_b,remain_t,next_ctr
         cost_on_no_clk_win_imp, no_clk_win_imps, with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps \
             = 0, 0, 0, 0, 0, 0
         clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
 
-        for _, t in enumerate(tqdm.tqdm(range(1000), smoothing=0.0, mininterval=1.0)):
+        total_loss = 0
+        for _, t in enumerate(tqdm.tqdm(range(len(train_data)), smoothing=0.0, mininterval=1.0)):
             data = train_data[t, :]
-            mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index], data[data_clk_index], int(data[data_clk_index + 1])
+            mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index], data[data_clk_index], int(
+                data[data_clk_index + 1])
 
-            if past_hour <= 23 and budget - mprice >= 0:
+            if hour <= 23 and budget - mprice >= 0:
                 real_clks += clk
 
-                s_t = torch.unsqueeze(
-                    torch.Tensor(np.array([(budget - cost) / B,
-                                           (23 - past_hour) / 23,
-                                           ctr])).float().to(device), 0)
+                s_t = torch.Tensor([budget / B, (23 - hour) / 23, ctr])
 
                 bids += 1
-                action = rl_model.choose_action(s_t)
+                action = rl_model.choose_action(s_t.unsqueeze(0).to(device))
                 bid_price = actions[action]
 
                 if bid_price >= mprice:
@@ -239,8 +241,6 @@ if __name__ == '__main__':
                     clks += clk
                     imps += 1
                     budget -= mprice
-
-                past_hour = hour
 
                 if clk:
                     with_clk_imps += 1
@@ -257,46 +257,58 @@ if __name__ == '__main__':
                 r_t = reward_func(clk, bid_price, mprice, ctr, ecpc,
                                   cost_on_no_clk_win_imp / cost if cost != 0 else 0,
                                   no_clk_win_imps / imps if imps != 0 else 0,
-                with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
+                                  with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
 
-                rl_model.store_transition(s_t.detach().cpu().numpy().tolist(), action, r_t)
+                if t + 1 == len(train_data) - 1 or budget <= 0:
+                    done = 1
+
+                next_data = train_data[t + 1, :]
+                s_t_ = torch.Tensor([budget / B, (23 - next_data[data_clk_index + 1]) / 23, next_data[data_ctr_index]])
+
+                transitions = torch.cat([s_t, torch.tensor([action]), s_t_,
+                                         torch.tensor([done]), torch.tensor([r_t])], dim=-1).unsqueeze(0).to(device)
+                rl_model.store_transition(transitions)
+
+                if rl_model.memory.memory_counter >= args.rl_batch_size:
+                    if rl_model.memory.memory_counter % 10000 == 0:
+                        for _ in range(64):
+                            loss = rl_model.learn()
+                            total_loss = loss
 
         logger.info('ep\t{}\t{}\t{}\t{}\t{}\t{}'.format(ep, clks, real_clks, bids, imps, cost))
 
-        loss = rl_model.learn()
-        train_losses.append(loss)
-    
+        train_losses.append(total_loss)
+
     train_loss_df = pd.DataFrame(data=train_losses)
     train_loss_df.to_csv(submission_path + 'train_critics_' + args.sample_type + str(args.budget_para[0]) + '.csv')
-    
+
     budget = args.budget * args.budget_para[0]
     hour_clks, hour_real_clks, hour_bids, hour_imps, hour_cost = \
-        list([0 for _ in range(24)]), list([0 for _ in range(24)]), list([0 for _ in range(24)]),\
+        list([0 for _ in range(24)]), list([0 for _ in range(24)]), list([0 for _ in range(24)]), \
         list([0 for _ in range(24)]), list([0 for _ in range(24)])
 
-    past_hour = 0
     cost_on_no_clk_win_imp, no_clk_win_imps, with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps \
         = 0, 0, 0, 0, 0, 0
     clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
     bid_datas = []
     for t in enumerate(tqdm.tqdm(range(len(test_data)), smoothing=0.0, mininterval=1.0)):
         data = test_data[t, :][0]
-        mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index].item(), data[data_clk_index], int(data[data_clk_index + 1])
+        mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index].item(), data[data_clk_index], int(
+            data[data_clk_index + 1])
 
-        if past_hour <= 23 and budget - mprice >= 0:
+        if hour <= 23 and budget - mprice >= 0:
             real_clks += clk
             hour_real_clks[hour] += clk
 
             s_t = torch.unsqueeze(
-                torch.Tensor(np.array([(budget - cost) / B,
-                                       (23 - past_hour) / 23,
-                                       ctr])).float().to(device), 0)
+                torch.Tensor(np.array([budget / B, (23 - hour) / 23, ctr])).float().to(device), 0)
 
             bids += 1
             hour_bids[hour] += 1
 
             action = rl_model.choose_best_action(s_t)
             bid_price = actions[action]
+            print(bid_price)
             bid_datas.append(bid_price)
 
             if bid_price >= mprice:
@@ -310,8 +322,6 @@ if __name__ == '__main__':
                 hour_imps[hour] += 1
 
                 budget -= mprice
-
-            past_auc_num = hour
 
             if clk:
                 with_clk_imps += 1
@@ -333,12 +343,14 @@ if __name__ == '__main__':
             bid_datas.append(0)
     logger.info('test\t{}\t{}\t{}\t{}\t{}'.format(clks, real_clks, bids, imps, cost))
 
-    hour_records = {'clks': hour_clks, 'real_clks': hour_real_clks, 'bids': hour_bids, 'imps': hour_imps, 'cost': hour_cost}
+    hour_records = {'clks': hour_clks, 'real_clks': hour_real_clks, 'bids': hour_bids, 'imps': hour_imps,
+                    'cost': hour_cost}
     hour_record_df = pd.DataFrame(data=hour_records)
     hour_record_df.to_csv(submission_path + 'hour_record_' + args.model_name + '_' + args.sample_type +
                           str(args.budget_para[0]) + '.csv')
 
-    record_df = pd.DataFrame(data=[clks, real_clks, bids, imps, cost], index=['clk', 'real_clk', 'bids', 'imps', 'cost'])
+    record_df = pd.DataFrame(data=[clks, real_clks, bids, imps, cost],
+                             index=['clk', 'real_clk', 'bids', 'imps', 'cost'])
     record_df.to_csv(submission_path + 'record_' + args.model_name + '_' + args.sample_type +
                      str(args.budget_para[0]) + '.csv')
 

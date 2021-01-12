@@ -95,7 +95,7 @@ class PolicyGradient:
         self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
     def loss_func(self, all_act_prob, acts, vt):
-        neg_log_prob = -torch.log(all_act_prob.gather(1, acts - 1)).to(self.device)
+        neg_log_prob = -torch.log(all_act_prob.gather(1, acts)).to(self.device)
         loss = torch.mean(torch.mul(neg_log_prob, vt)).to(self.device)
 
         return loss
@@ -105,13 +105,13 @@ class PolicyGradient:
         self.policy_net.train()
         torch.cuda.empty_cache()
         prob_weights = self.policy_net.forward(state)
-        print(torch.normal(prob_weights, 0.5))
-        action = torch.max(torch.normal(prob_weights, 0.5))[1].item()
+
+        action = torch.argmax(torch.normal(prob_weights, 0.5), dim=-1).item()
         return action
 
-    # def choose_best_action(self, state):
-    #     self.policy_net.eval()
-    #     return torch.max(self.policy_net.forward(state), 1)[1].item()
+    def choose_best_action(self, state):
+        self.policy_net.eval()
+        return torch.argmax(gumbel_softmax_sample(self.policy_net.forward(state), temprature=0.1), dim=-1).item()
 
     # 储存一回合的s,a,r；因为每回合训练
     def store_transition(self, s, a, r):
@@ -121,6 +121,7 @@ class PolicyGradient:
 
     # 对每一轮的奖励值进行累计折扣及归一化处理
     def discount_and_norm_rewards(self):
+        print(self.ep_rs)
         discounted_ep_rs = np.zeros_like(self.ep_rs, dtype=np.float)
         running_add = 0
         # reversed 函数返回一个反转的迭代器。
@@ -143,16 +144,16 @@ class PolicyGradient:
         discounted_ep_rs_norm = self.discount_and_norm_rewards()
         states = torch.FloatTensor(self.ep_states).to(self.device)
         acts = torch.unsqueeze(torch.LongTensor(self.ep_as), 1).to(self.device)
-        vt = torch.FloatTensor(discounted_ep_rs_norm).view(-1,1).to(self.device)
+        vt = torch.FloatTensor(discounted_ep_rs_norm).view(-1, 1).to(self.device)
 
-        all_act_probs = self.policy_net.forward(states).squeeze(1)
+        all_act_probs = gumbel_softmax_sample(self.policy_net.forward(states), hard=False).squeeze(1)
 
         loss = self.loss_func(all_act_probs, acts, vt)
-
+        print(loss)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-
+        # print(self.policy_net.mlp[0].weight)
         # 训练完后清除训练数据，开始下一轮
         self.ep_states, self.ep_as, self.ep_rs = [], [], []
         return loss.item()

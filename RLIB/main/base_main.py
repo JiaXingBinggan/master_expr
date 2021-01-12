@@ -73,7 +73,8 @@ def map_mprice(line):
 
 
 def bidding(bid):
-    return int(bid)
+    return int(bid if bid <= 300 else 300)
+
 
 def win_rate_f(bid, c):
     win_rate = bid / (c + bid)
@@ -93,7 +94,7 @@ def generate_bid_price(datas):
     :param datas: type list
     :return:
     '''
-    return np.array(list(map(bidding, datas)))
+    return np.array(list(map(bidding, datas))).astype(int)
 
 
 def bid_main(bid_prices, imp_datas, budget):
@@ -155,6 +156,7 @@ def bid_main(bid_prices, imp_datas, budget):
                     budget -= tmp_mprice
     return win_clks, real_clks, bids, imps, cost
 
+
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
@@ -163,20 +165,21 @@ def get_dataset(args):
     train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.data')[columns]
     test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.data')[columns]
 
-    train_data = train_data[['clk', 'ctr', 'mprice']].values.astype(float)
-    test_data = test_data[['clk', 'ctr', 'mprice']].values.astype(float)
+    train_data = train_data[['clk', 'ctr', 'mprice', 'hour']].values.astype(float)
+    test_data = test_data[['clk', 'ctr', 'mprice', 'hour']].values.astype(float)
 
     ecpc = np.sum(train_data[:, 0]) / np.sum(train_data[:, 2])
     origin_ctr = np.sum(train_data[:, 0]) / len(train_data)
+    avg_mprice = np.sum(train_data[:, 2]) / len(train_data)
 
-    return train_data, test_data, ecpc, origin_ctr
+    return train_data, test_data, ecpc, origin_ctr, avg_mprice
 
 
 if __name__ == '__main__':
-    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
-    train_data, test_data, ecpc, origin_ctr = get_dataset(args)
+    train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)
 
     setup_seed(args.seed)
 
@@ -198,35 +201,37 @@ if __name__ == '__main__':
     if not os.path.exists(args.save_param_dir + args.campaign_id):
         os.mkdir(args.save_param_dir + args.campaign_id)
 
+    submission_path = args.data_path + args.dataset_name + args.campaign_id + args.model_name + '/'  # ctr 预测结果存放文件夹位置
+    if not os.path.exists(submission_path):
+        os.mkdir(submission_path)
+
     data_clk_index, data_mprice_index = args.data_clk_index, args.data_mprice_index
 
-    base_algos = ['const', 'rand', 'mcpc', 'lin', 'ortb']
+    base_algos = ['const', 'rand', 'lin', 'hb', 'ortb']
 
-    const_paras = list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10))
-    rand_paras = list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10))
-    lin_paras = list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10))
+    paras = list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10))
 
     # 一定要注意如果顺序的到快花费完预算的时候,例如预算200,但是花到180时,然后下一个曝光的市场价为21,应该去竞标下一个曝光(因为没有那么多钱)
 
-    for para in args.budget_para:
-        budget = args.budget * para
-        logger.info('Budget para:{}, budget: {}'.format(para, budget))
+    for budget_para in args.budget_para:
+        budget = args.budget * budget_para
+        logger.info('Budget para:{}, budget: {}'.format(budget_para, budget))
         # for training
         train_base = {}
         for algo in base_algos:
             clk_dict = {}
             if algo == 'const':
-                for para in const_paras:
+                for para in paras:
                     bid_datas = generate_bid_price(para * np.ones_like(train_data[:, 2]))
                     res_ = bid_main(bid_datas, train_data, budget)
                     clk_dict.setdefault(para, res_[0])
             elif algo == 'rand':
-                for para in const_paras:
-                    bid_datas = generate_bid_price(np.random.normal(0, 1, size=[len(train_data), 1]) * para)
+                for para in paras:
+                    bid_datas = generate_bid_price(np.random.uniform(0, 1, size=[len(train_data), 1]) * para)
                     res_ = bid_main(bid_datas, train_data, budget)
                     clk_dict.setdefault(para, res_[0])
-            elif algo == 'lin':
-                for para in const_paras:
+            elif algo == 'hb':
+                for para in paras:
                     bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
                     res_ = bid_main(bid_datas, train_data, budget)
                     clk_dict.setdefault(para, res_[0])
@@ -235,9 +240,16 @@ if __name__ == '__main__':
             if clk_dict:
                 train_base.setdefault(algo, clk_dict[-1][0])
 
-        logger.info('\t\tclks\treal_clks\tbids\timps\tcost')
+        logger.info('\t\tclks\treal_clks\tbids\timps\tcost\tpara')
         final_res = {}
         # for testing
+        final_bid_datas = {}
+        final_bid_datas.setdefault('hour', test_data[:, 3].tolist())
+        final_bid_datas.setdefault('ctr', test_data[:, 1].tolist())
+        final_bid_datas.setdefault('mprice', test_data[:, 2].tolist())
+        final_bid_datas.setdefault('clk', test_data[:, 0].tolist())
+
+        records = []
         bid_datas = np.zeros_like(test_data[:, 2])
         for algo in base_algos:
             if algo == 'const':
@@ -245,20 +257,33 @@ if __name__ == '__main__':
                 bid_datas = generate_bid_price(para * np.ones_like(test_data[:, 2]))
             elif algo == 'rand':
                 para = train_base[algo]
-                bid_datas = generate_bid_price(np.random.normal(0, 1, size=[len(test_data), 1]) * para)
-            elif algo == 'mcpc':
-                bid_datas = ecpc * test_data[:, 1]
+                bid_datas = generate_bid_price(np.random.uniform(0, 1, size=[len(test_data), 1]) * para)
+            # elif algo == 'mcpc':
+            #     bid_datas = ecpc * test_data[:, 1]
             elif algo == 'lin':
+                bid_datas = generate_bid_price(test_data[:, 1] * avg_mprice / origin_ctr)
+            elif algo == 'hb':
                 para = train_base[algo]
                 bid_datas = generate_bid_price(test_data[:, 1] * para / origin_ctr)
             elif algo == 'ortb':
                 c = fit_c(test_data)
-                lamda = 5.2e-7
+                lamda = 1e-5 # 1.0 5e-6 0.5 1e-5
                 bid_datas = generate_bid_price(
                     np.sqrt((test_data[:, 1] * c / lamda) + c * np.ones_like(test_data[:, 1]) ** 2))
             res_ = bid_main(bid_datas, test_data, budget)
 
-            logger.info('{}\t{}\t{}\t{}\t{}\t{}'.format(algo, res_[0], res_[1], res_[2], res_[3], res_[4]))
+            logger.info('{}\t{}\t{}\t{}\t{}\t{}\t{}'.format(algo, res_[0], res_[1], res_[2], res_[3], res_[4],
+                                                            train_base[algo] if train_base.get(algo) else 0))
+
+            final_bid_datas.setdefault(algo, bid_datas.flatten().tolist())
+            records.append([algo, res_[0], res_[1], res_[2], res_[3], res_[4],
+                                                            train_base[algo] if train_base.get(algo) else 0])
+        bid_price_record_df = pd.DataFrame(data=final_bid_datas)
+        bid_price_record_df.to_csv(submission_path + 'bid_price_record_' + args.sample_type + str(budget_para) + '.csv', index = None)
+
+        record = pd.DataFrame(data=records,
+                           columns=['algo', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'para'])
+        record.to_csv(submission_path + 'record_base_' + args.sample_type + str(budget_para) + '.csv', index=None)
 
 
 

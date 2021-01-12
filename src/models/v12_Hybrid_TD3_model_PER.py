@@ -329,8 +329,8 @@ class Hybrid_TD3_Model():
         self.Hybrid_Critic_ = copy.deepcopy(self.Hybrid_Critic)
 
         # 优化器
-        self.optimizer_a = torch.optim.Adam(self.Hybrid_Actor.parameters(), lr=self.lr_C_A)
-        self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C)
+        self.optimizer_a = torch.optim.Adam(self.Hybrid_Actor.parameters(), lr=self.lr_C_A, weight_decay=1e-5)
+        self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C, weight_decay=1e-5)
 
         self.loss_func = nn.MSELoss(reduction='mean')
 
@@ -445,9 +445,9 @@ class Hybrid_TD3_Model():
         self.learn_iter += 1
 
         self.Hybrid_Actor.train()
-        self.Hybrid_Actor_.train()
+        self.Hybrid_Actor_.eval()
         self.Hybrid_Critic.train()
-        self.Hybrid_Critic_.train()
+        self.Hybrid_Critic_.eval()
 
         # sample
         choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)

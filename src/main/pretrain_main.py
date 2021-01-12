@@ -223,7 +223,7 @@ def get_dataset(args):
 
     field_nums = train_fm.shape[1] - 1  # 特征域的数量
 
-    with open(data_path + 'featindex.ctr.' + args.sample_type + '.txt') as feat_f:
+    with open(data_path + 'feat.ctr.' + args.sample_type + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
     day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
