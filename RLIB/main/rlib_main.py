@@ -123,21 +123,22 @@ def get_list_data(inputs, batch_size, shuffle):
 def get_next_batch(batch):
     return batch.__next__()
 
-def reward_func(clk, bid_price, mprice, ctr, ecpc, cost_on_no_clk_win_imp, no_clk_win_imps,
-                with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps):
-    print(50000 * ctr, mprice)
+def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate):
+    # print(50000 * ctr, mprice)
     if bid_price >= mprice:
         if clk:
-            return (1 - np.power((bid_price - mprice) / mprice, 2))
+            # print('1', win_clk_rate / win_no_clk_rate)
+            return win_clk_rate / win_no_clk_rate
         else:
-            return - (cost_on_no_clk_win_imp / no_clk_win_imps) if no_clk_win_imps != 0 else 0
-            # 在没点击的曝光上花费得越多越有问题,no_clk_no_win_imps是指赢得没点击的曝光数量占目前赢得曝光数量的比例,
-            # cost_on_no_clk_imp是指在赢得无点击曝光的花费占到目前为止的比例.
+            # print('2', - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10)
+            return - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10
     else:
         if clk:
-            return - (1 - with_clk_no_win_imps / with_clk_imps)
+            # print('3', - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10)
+            return - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10
         else:
-            return (1 - no_clk_no_win_imps / no_clk_imps)
+            # print('4', (1 - win_no_clk_rate) * remain_budget_on_hour_rate)
+            return (1 - win_no_clk_rate) * remain_budget_on_hour_rate
 
 '''
 1458
@@ -210,28 +211,39 @@ if __name__ == '__main__':
     expect_auc_num = len(train_data)
     logger.info('para:{}, budget:{}'.format(args.budget_para[0], B))
     logger.info('\tclks\treal_clks\tbids\timps\tcost')
+    done = 0
+    epsilon_max, epsilon_min = 0.9, 0.1
+    start_time = datetime.datetime.now()
     for ep in range(args.episodes):
         budget = B
-        past_hour = 0
-        next_statistics = [0, 0, 0] # 用于记录临时特征remain_b,remain_t,next_ctr
+        next_statistics = [0, 0, 0]  # 用于记录临时特征remain_b,remain_t,next_ctr
         cost_on_no_clk_win_imp, no_clk_win_imps, with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps \
             = 0, 0, 0, 0, 0, 0
         clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
+        win_clks, win_no_clks, with_clks, with_no_clks = 0, 0, 0, 0
 
-        for _, t in enumerate(tqdm.tqdm(range(1000), smoothing=0.0, mininterval=1.0)):
+        total_loss = 0
+        epsilon = epsilon_min + ep * (epsilon_max - epsilon_min) / args.episodes
+        for _, t in enumerate(range(len(train_data))):
             data = train_data[t, :]
-            mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index], data[data_clk_index], int(data[data_clk_index + 1])
+            mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index], data[data_clk_index], int(
+                data[data_clk_index + 1])
 
-            if past_hour <= 23 and budget - mprice >= 0:
+            if hour <= 23 and budget - mprice >= 0:
                 real_clks += clk
 
-                s_t = torch.unsqueeze(
-                    torch.Tensor(np.array([(budget - cost) / B,
-                                           (23 - past_hour) / 23,
-                                           ctr])).float().to(device), 0)
+                if clk:
+                    with_clks += 1
+                else:
+                    with_no_clks += 1
+
+                win_clk_rate = win_clks / with_clks if real_clks else 0
+                win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
+
+                s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
 
                 bids += 1
-                action = rl_model.choose_action(s_t)
+                action = rl_model.choose_action(s_t.unsqueeze(0).to(device))
                 bid_price = actions[action]
 
                 if bid_price >= mprice:
@@ -240,63 +252,62 @@ if __name__ == '__main__':
                     imps += 1
                     budget -= mprice
 
-                past_hour = hour
-
-                if clk:
-                    with_clk_imps += 1
-                    if bid_price < mprice:
-                        with_clk_no_win_imps += 1
-                else:
-                    no_clk_imps += 1
-                    if bid_price < mprice:
-                        no_clk_no_win_imps += 1
+                    if clk:
+                        win_clks += 1
                     else:
-                        cost_on_no_clk_win_imp += mprice
-                        no_clk_win_imps += 1
+                        win_no_clks += 1
+                remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23)
 
-                r_t = reward_func(clk, bid_price, mprice, ctr, ecpc,
-                                  cost_on_no_clk_win_imp / cost if cost != 0 else 0,
-                                  no_clk_win_imps / imps if imps != 0 else 0,
-                with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
+                r_t = reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate)
 
-                rl_model.store_transition(s_t.detach().cpu().numpy().tolist(), action, r_t)
+                rl_model.store_transition(s_t.detach().numpy().tolist(), action, r_t)
 
-        logger.info('ep\t{}\t{}\t{}\t{}\t{}\t{}'.format(ep, clks, real_clks, bids, imps, cost))
+
+        logger.info('ep\t{}\t{}\t{}\t{}\t{}\t{}\t{}s'.format(ep, clks, real_clks, bids, imps, cost,
+                                                            [(datetime.datetime.now() - start_time).seconds]))
 
         loss = rl_model.learn()
-        train_losses.append(loss)
-    
+        train_losses.append(total_loss)
+
     train_loss_df = pd.DataFrame(data=train_losses)
     train_loss_df.to_csv(submission_path + 'train_critics_' + args.sample_type + str(args.budget_para[0]) + '.csv')
-    
+
     budget = args.budget * args.budget_para[0]
     hour_clks, hour_real_clks, hour_bids, hour_imps, hour_cost = \
-        list([0 for _ in range(24)]), list([0 for _ in range(24)]), list([0 for _ in range(24)]),\
+        list([0 for _ in range(24)]), list([0 for _ in range(24)]), list([0 for _ in range(24)]), \
         list([0 for _ in range(24)]), list([0 for _ in range(24)])
 
-    past_hour = 0
     cost_on_no_clk_win_imp, no_clk_win_imps, with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps \
         = 0, 0, 0, 0, 0, 0
     clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
     bid_datas = []
+    with_clks, with_no_clks = 0, 0
+    win_clks, win_no_clks = 0, 0
     for t in enumerate(tqdm.tqdm(range(len(test_data)), smoothing=0.0, mininterval=1.0)):
         data = test_data[t, :][0]
-        mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index].item(), data[data_clk_index], int(data[data_clk_index + 1])
+        mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index].item(), data[data_clk_index], int(
+            data[data_clk_index + 1])
 
-        if past_hour <= 23 and budget - mprice >= 0:
+        if hour <= 23 and budget - mprice >= 0:
             real_clks += clk
             hour_real_clks[hour] += clk
 
-            s_t = torch.unsqueeze(
-                torch.Tensor(np.array([(budget - cost) / B,
-                                       (23 - past_hour) / 23,
-                                       ctr])).float().to(device), 0)
+            if clk:
+                with_clks += 1
+            else:
+                with_no_clks += 1
+
+            win_clk_rate = win_clks / with_clks if real_clks else 0
+            win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
+
+            s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
 
             bids += 1
             hour_bids[hour] += 1
 
-            action = rl_model.choose_best_action(s_t)
+            action = rl_model.choose_best_action(s_t.unsqueeze(0).to(device))
             bid_price = actions[action]
+
             bid_datas.append(bid_price)
 
             if bid_price >= mprice:
@@ -311,34 +322,22 @@ if __name__ == '__main__':
 
                 budget -= mprice
 
-            past_auc_num = hour
-
-            if clk:
-                with_clk_imps += 1
-                if bid_price < mprice:
-                    with_clk_no_win_imps += 1
-            else:
-                no_clk_imps += 1
-                if bid_price < mprice:
-                    no_clk_no_win_imps += 1
+                if clk:
+                    win_clks += 1
                 else:
-                    cost_on_no_clk_win_imp += mprice
-                    no_clk_win_imps += 1
-
-            r_t = reward_func(clk, bid_price, mprice, ctr, ecpc,
-                              cost_on_no_clk_win_imp / cost if cost != 0 else 0,
-                              no_clk_win_imps / imps if imps != 0 else 0,
-                              with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
+                    win_no_clks += 1
         else:
             bid_datas.append(0)
     logger.info('test\t{}\t{}\t{}\t{}\t{}'.format(clks, real_clks, bids, imps, cost))
 
-    hour_records = {'clks': hour_clks, 'real_clks': hour_real_clks, 'bids': hour_bids, 'imps': hour_imps, 'cost': hour_cost}
+    hour_records = {'clks': hour_clks, 'real_clks': hour_real_clks, 'bids': hour_bids, 'imps': hour_imps,
+                    'cost': hour_cost}
     hour_record_df = pd.DataFrame(data=hour_records)
     hour_record_df.to_csv(submission_path + 'hour_record_' + args.model_name + '_' + args.sample_type +
                           str(args.budget_para[0]) + '.csv')
 
-    record_df = pd.DataFrame(data=[clks, real_clks, bids, imps, cost], index=['clk', 'real_clk', 'bids', 'imps', 'cost'])
+    record_df = pd.DataFrame(data=[clks, real_clks, bids, imps, cost],
+                             index=['clk', 'real_clk', 'bids', 'imps', 'cost'])
     record_df.to_csv(submission_path + 'record_' + args.model_name + '_' + args.sample_type +
                      str(args.budget_para[0]) + '.csv')
 

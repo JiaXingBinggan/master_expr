@@ -125,21 +125,22 @@ def get_next_batch(batch):
     return batch.__next__()
 
 
-def reward_func(clk, bid_price, mprice, ctr, ecpc, cost_on_no_clk_win_imp, no_clk_win_imps,
-                with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps):
+def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate):
     # print(50000 * ctr, mprice)
     if bid_price >= mprice:
         if clk:
-            return (1 - np.power((bid_price - mprice) / mprice, 2))
+            # print('1', win_clk_rate / win_no_clk_rate)
+            return win_clk_rate / win_no_clk_rate
         else:
-            return - (cost_on_no_clk_win_imp / no_clk_win_imps) if no_clk_win_imps != 0 else 0
-            # 在没点击的曝光上花费得越多越有问题,no_clk_no_win_imps是指赢得没点击的曝光数量占目前赢得曝光数量的比例,
-            # cost_on_no_clk_imp是指在赢得无点击曝光的花费占到目前为止的比例.
+            # print('2', - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10)
+            return - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10
     else:
         if clk:
-            return - (1 - with_clk_no_win_imps / with_clk_imps)
+            # print('3', - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10)
+            return - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10
         else:
-            return (1 - no_clk_no_win_imps / no_clk_imps)
+            # print('4', (1 - win_no_clk_rate) * remain_budget_on_hour_rate)
+            return (1 - win_no_clk_rate) * remain_budget_on_hour_rate
 
 
 '''
@@ -214,14 +215,18 @@ if __name__ == '__main__':
     logger.info('para:{}, budget:{}'.format(args.budget_para[0], B))
     logger.info('\tclks\treal_clks\tbids\timps\tcost')
     done = 0
+    epsilon_max, epsilon_min = 0.9, 0.1
+
     for ep in range(args.episodes):
         budget = B
         next_statistics = [0, 0, 0]  # 用于记录临时特征remain_b,remain_t,next_ctr
         cost_on_no_clk_win_imp, no_clk_win_imps, with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps \
             = 0, 0, 0, 0, 0, 0
         clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
+        win_clks, win_no_clks, with_clks, with_no_clks = 0, 0, 0, 0
 
         total_loss = 0
+        epsilon = epsilon_min + ep * (epsilon_max - epsilon_min) / args.episodes
         for _, t in enumerate(tqdm.tqdm(range(len(train_data)), smoothing=0.0, mininterval=1.0)):
             data = train_data[t, :]
             mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index], data[data_clk_index], int(
@@ -230,10 +235,18 @@ if __name__ == '__main__':
             if hour <= 23 and budget - mprice >= 0:
                 real_clks += clk
 
-                s_t = torch.Tensor([budget / B, (23 - hour) / 23, ctr])
+                if clk:
+                    with_clks += 1
+                else:
+                    with_no_clks += 1
+
+                win_clk_rate = win_clks / with_clks if real_clks else 0
+                win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
+
+                s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
 
                 bids += 1
-                action = rl_model.choose_action(s_t.unsqueeze(0).to(device))
+                action = rl_model.choose_action(s_t.unsqueeze(0).to(device), epsilon)
                 bid_price = actions[action]
 
                 if bid_price >= mprice:
@@ -242,33 +255,32 @@ if __name__ == '__main__':
                     imps += 1
                     budget -= mprice
 
-                if clk:
-                    with_clk_imps += 1
-                    if bid_price < mprice:
-                        with_clk_no_win_imps += 1
-                else:
-                    no_clk_imps += 1
-                    if bid_price < mprice:
-                        no_clk_no_win_imps += 1
+                    if clk:
+                        win_clks += 1
                     else:
-                        cost_on_no_clk_win_imp += mprice
-                        no_clk_win_imps += 1
+                        win_no_clks += 1
+                remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23)
 
-                r_t = reward_func(clk, bid_price, mprice, ctr, ecpc,
-                                  cost_on_no_clk_win_imp / cost if cost != 0 else 0,
-                                  no_clk_win_imps / imps if imps != 0 else 0,
-                                  with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
+                r_t = reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate)
 
                 if t + 1 == len(train_data) or budget <= 0:
                     done = 1
                     s_t_ = torch.Tensor(
-                        [budget / B, 0, 0])
+                        [budget / B, 0, win_clk_rate, win_no_clk_rate])
                 else:
                     next_data = train_data[t + 1, :]
-                    s_t_ = torch.Tensor([budget / B, (23 - next_data[data_clk_index + 1]) / 23, next_data[data_ctr_index]])
+                    if next_data[data_clk_index]:
+                        next_win_clk_rate = win_clks / (with_clks + 1)
+                        next_win_no_clk_rate = win_no_clks / with_no_clks if with_no_clks else 0
+                    else:
+                        next_win_clk_rate = win_clks / with_clks if with_clks else 0
+                        next_win_no_clk_rate = win_no_clks / (with_no_clks + 1)
+                    s_t_ = torch.Tensor([budget / B, next_data[data_ctr_index],
+                                         next_win_clk_rate,
+                                         next_win_no_clk_rate])
 
                 transitions = torch.cat([s_t, torch.tensor([action]), s_t_,
-                                         torch.tensor([done]), torch.tensor([clk])], dim=-1).unsqueeze(0).to(device)
+                                         torch.tensor([done]), torch.tensor([r_t])], dim=-1).unsqueeze(0).to(device)
                 rl_model.store_transition(transitions)
 
                 if rl_model.memory.memory_counter >= args.rl_batch_size:
@@ -293,6 +305,8 @@ if __name__ == '__main__':
         = 0, 0, 0, 0, 0, 0
     clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
     bid_datas = []
+    with_clks, with_no_clks = 0, 0
+    win_clks, win_no_clks = 0, 0
     for t in enumerate(tqdm.tqdm(range(len(test_data)), smoothing=0.0, mininterval=1.0)):
         data = test_data[t, :][0]
         mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index].item(), data[data_clk_index], int(
@@ -302,13 +316,20 @@ if __name__ == '__main__':
             real_clks += clk
             hour_real_clks[hour] += clk
 
-            s_t = torch.unsqueeze(
-                torch.Tensor(np.array([budget / B, (23 - hour) / 23, ctr])).float().to(device), 0)
+            if clk:
+                with_clks += 1
+            else:
+                with_no_clks += 1
+
+            win_clk_rate = win_clks / with_clks if real_clks else 0
+            win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
+
+            s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
 
             bids += 1
             hour_bids[hour] += 1
 
-            action = rl_model.choose_best_action(s_t)
+            action = rl_model.choose_best_action(s_t.unsqueeze(0).to(device))
             bid_price = actions[action]
             print(bid_price)
             bid_datas.append(bid_price)
@@ -325,22 +346,10 @@ if __name__ == '__main__':
 
                 budget -= mprice
 
-            if clk:
-                with_clk_imps += 1
-                if bid_price < mprice:
-                    with_clk_no_win_imps += 1
-            else:
-                no_clk_imps += 1
-                if bid_price < mprice:
-                    no_clk_no_win_imps += 1
+                if clk:
+                    win_clks += 1
                 else:
-                    cost_on_no_clk_win_imp += mprice
-                    no_clk_win_imps += 1
-
-            r_t = reward_func(clk, bid_price, mprice, ctr, ecpc,
-                              cost_on_no_clk_win_imp / cost if cost != 0 else 0,
-                              no_clk_win_imps / imps if imps != 0 else 0,
-                              with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
+                    win_no_clks += 1
         else:
             bid_datas.append(0)
     logger.info('test\t{}\t{}\t{}\t{}\t{}'.format(clks, real_clks, bids, imps, cost))

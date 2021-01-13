@@ -70,7 +70,7 @@ class Memory(object):
             total_p = torch.sum(priorities, dim=0)
             min_prob = torch.min(priorities)
             # 采样概率分布
-            P = torch.div(priorities, total_p).squeeze(1).cpu().numpy()
+            P = torch.div(priorities, total_p).squeeze(1).cpu().detach().numpy()
             sample_indexs = torch.Tensor(np.random.choice(self.memory_size, batch_size, p=P, replace=False)).long().to(
                 self.device)
         else:
@@ -140,7 +140,7 @@ class PolicyNet(nn.Module):
         # self.bn_input.weight.data.fill_(1)
         # self.bn_input.bias.data.fill_(0)
 
-        neuron_nums = [128, 64]
+        neuron_nums = [128]
 
         self.layers = list()
         for neuron_num in neuron_nums:
@@ -218,7 +218,7 @@ class DQN():
 
         self.memory_counter = 0
 
-        self.input_dims = 3
+        self.input_dims = 4
 
         self.memory = Memory(self.memory_size, self.input_dims * 2 + 3, self.device)
 
@@ -231,6 +231,8 @@ class DQN():
 
         self.loss_func = nn.MSELoss(reduction='mean')
 
+        self.epsilon = 0.9
+
     def store_transition(self, transitions):  # 所有的值都应该弄成float
         if torch.max(self.memory.prioritys_) == 0.:
             td_errors = torch.cat(
@@ -242,13 +244,15 @@ class DQN():
 
         self.memory.add(td_errors, transitions.detach())
 
-    def choose_action(self, state):
+    def choose_action(self, state, epsilon):
         self.agent.train()
         with torch.no_grad():
-            action_values = self.agent.evaluate(state)
-            action_values = torch.normal(action_values, 1.0)
+            if random.uniform(0, 1) > epsilon:
+                action = random.sample(range(self.action_nums), 1)[0]
+            else:
+                action = torch.argmax(self.agent.evaluate(state), dim=-1).item()
 
-        return torch.argmax(action_values, dim=-1).item()
+        return action
 
     def choose_best_action(self, state):
         self.agent.eval()

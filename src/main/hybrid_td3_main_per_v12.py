@@ -120,15 +120,20 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
             current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * 0
+            current_basic_rewards[current_with_clk_indexs] * -1
         )
+
+        # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
+        #         current_with_clk_indexs].mean(dim=1).view(-1, 1)
 
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
             current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * 0
+            current_basic_rewards[current_without_clk_indexs] * -1
         )
+        # without_clk_rewards = current_pretrain_y_preds[
+        #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
 
         # print(-labels[with_action_indexs].float() * current_y_preds - (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) *
         #       (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - current_y_preds).log())
@@ -302,7 +307,7 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    gap = 5000
+    gap = 10000
 
     data_len = len(train_data)
 
@@ -360,24 +365,24 @@ if __name__ == '__main__':
         s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
         transitions = torch.cat(
-            [s_t, return_c_actions, d_q_values, ensemble_d_actions.float(), rewards, s_t_],
+            [s_t, c_actions, d_q_values, ensemble_d_actions.float(), rewards, s_t_],
             dim=1)
 
         rl_model.store_transition(transitions)
 
         if intime_steps >= args.rl_batch_size:
-            if intime_steps % gap == 0:
-                rl_model.memory.beta = min(rl_model.memory.beta_max,
-                                          intime_steps *
-                                          (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
+            # if intime_steps % gap == 0:
+            # rl_model.memory.beta = min(rl_model.memory.beta_max,
+            #                           intime_steps *
+            #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
 
-                for _ in range(args.rl_train_iters):
-                    critic_loss = rl_model.learn()
+            for _ in range(1):
+                critic_loss = rl_model.learn()
 
-                    # rl_model.memory.beta = min(rl_model.memory.beta_max,
-                    #                           intime_steps *
-                    #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
-                    tmp_train_ctritics = critic_loss
+                # rl_model.memory.beta = min(rl_model.memory.beta_max,
+                #                           intime_steps *
+                #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
+                tmp_train_ctritics = critic_loss
 
         if intime_steps % gap == 0:
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
@@ -400,12 +405,12 @@ if __name__ == '__main__':
                            np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
 
             record_param_steps += 1
-
-            if eva_stopping(early_rewards, args):
-                max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
-                early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
-                is_early_stop = True
-                break
+            if args.run_steps <= intime_steps <= args.stop_steps:
+                if eva_stopping(early_rewards, args):
+                    max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
+                    early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
+                    is_early_stop = True
+                    break
 
             torch.cuda.empty_cache()
 

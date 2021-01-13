@@ -27,7 +27,7 @@ def init_parser(campaign_id):
     parser.add_argument('--episodes', type=int, default=10)
     parser.add_argument('--model_name', default='RLIB')
     parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--memory_size', type=float, default=1e6)
+    parser.add_argument('--memory_size', type=float, default=5e5)
     parser.add_argument('--rl_batch_size', type=int, default=512)
     parser.add_argument('--rl_early_stop_iter', type=int, default=20)
     parser.add_argument('--device', default='cuda:0')

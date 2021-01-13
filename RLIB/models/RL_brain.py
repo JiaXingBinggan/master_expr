@@ -27,7 +27,7 @@ class Net(nn.Module):
         self.layers = list()
         neuron_nums = [32, 64, 16]
 
-        deep_input_dims = 3 # b,t,pctr
+        deep_input_dims = 4 # b,t,pctr
         for neuron_num in neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             # self.layers.append(nn.BatchNorm1d(neuron_num))
@@ -121,7 +121,6 @@ class PolicyGradient:
 
     # 对每一轮的奖励值进行累计折扣及归一化处理
     def discount_and_norm_rewards(self):
-        print(self.ep_rs)
         discounted_ep_rs = np.zeros_like(self.ep_rs, dtype=np.float)
         running_add = 0
         # reversed 函数返回一个反转的迭代器。
