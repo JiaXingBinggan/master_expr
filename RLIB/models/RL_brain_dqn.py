@@ -135,23 +135,27 @@ class PolicyNet(nn.Module):
         self.input_dims = input_dims
         self.action_nums = action_nums
 
-        deep_input_dims_1 = self.input_dims
+        deep_input_dims = self.input_dims
+        # self.bn_input = nn.BatchNorm1d(deep_input_dims)
+        # self.bn_input.weight.data.fill_(1)
+        # self.bn_input.bias.data.fill_(0)
 
-        neuron_nums = [32, 64, 16]
+        neuron_nums = [128, 64]
 
         self.layers = list()
         for neuron_num in neuron_nums:
-            self.layers.append(nn.Linear(deep_input_dims_1, neuron_num))
+            self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             self.layers.append(nn.ReLU())
-            deep_input_dims_1 = neuron_num
+            deep_input_dims = neuron_num
 
-        self.layers.append(nn.Linear(deep_input_dims_1, self.action_nums))
+        self.layers.append(nn.Linear(deep_input_dims, self.action_nums))
 
         weight_init(self.layers)
 
         self.mlp = nn.Sequential(*self.layers)
 
     def evaluate(self, input):
+        # obs = self.bn_input(input)
         obs = input
         c_q_out = self.mlp(obs)
 
@@ -242,14 +246,14 @@ class DQN():
         self.agent.train()
         with torch.no_grad():
             action_values = self.agent.evaluate(state)
-            action_values = action_values + torch.normal(action_values, 0.5)
+            action_values = torch.normal(action_values, 1.0)
 
         return torch.argmax(action_values, dim=-1).item()
 
     def choose_best_action(self, state):
         self.agent.eval()
         with torch.no_grad():
-            action_values, = self.agent.evaluate(state)
+            action_values = self.agent.evaluate(state)
 
         return torch.argmax(action_values, dim=-1).item()
 

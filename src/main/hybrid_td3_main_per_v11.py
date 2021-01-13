@@ -272,7 +272,7 @@ def eva_stopping(valid_rewards, args):  # early stopping
     return False
 
 if __name__ == '__main__':
-    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args, train_data, test_data, field_nums, feature_nums = config.init_parser(campaign_id)
 
     # 设置随机数种子

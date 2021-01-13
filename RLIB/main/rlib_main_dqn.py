@@ -259,18 +259,20 @@ if __name__ == '__main__':
                                   no_clk_win_imps / imps if imps != 0 else 0,
                                   with_clk_no_win_imps, with_clk_imps, no_clk_no_win_imps, no_clk_imps)
 
-                if t + 1 == len(train_data) - 1 or budget <= 0:
+                if t + 1 == len(train_data) or budget <= 0:
                     done = 1
-
-                next_data = train_data[t + 1, :]
-                s_t_ = torch.Tensor([budget / B, (23 - next_data[data_clk_index + 1]) / 23, next_data[data_ctr_index]])
+                    s_t_ = torch.Tensor(
+                        [budget / B, 0, 0])
+                else:
+                    next_data = train_data[t + 1, :]
+                    s_t_ = torch.Tensor([budget / B, (23 - next_data[data_clk_index + 1]) / 23, next_data[data_ctr_index]])
 
                 transitions = torch.cat([s_t, torch.tensor([action]), s_t_,
-                                         torch.tensor([done]), torch.tensor([r_t])], dim=-1).unsqueeze(0).to(device)
+                                         torch.tensor([done]), torch.tensor([clk])], dim=-1).unsqueeze(0).to(device)
                 rl_model.store_transition(transitions)
 
                 if rl_model.memory.memory_counter >= args.rl_batch_size:
-                    if rl_model.memory.memory_counter % 10000 == 0:
+                    if rl_model.memory.memory_counter % 5000 == 0:
                         for _ in range(64):
                             loss = rl_model.learn()
                             total_loss = loss

@@ -165,7 +165,7 @@ def test(rl_model, ensemble_nums, data_loader, device):
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
             actions, c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
-            print(actions)
+
             y, rewards, return_c_actions, return_ctrs = generate_preds(ensemble_nums, current_pretrain_y_preds, actions, ensemble_c_actions, c_actions,
                                                           labels, device, mode='test')
 
@@ -263,7 +263,7 @@ def get_dataset(args):
     return train_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data = get_dataset(args)
@@ -302,7 +302,7 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    gap = args.run_steps // args.record_times
+    gap = 5000
 
     data_len = len(train_data)
 
@@ -366,13 +366,18 @@ if __name__ == '__main__':
         rl_model.store_transition(transitions)
 
         if intime_steps >= args.rl_batch_size:
-            for _ in range(args.rl_train_iters):
-                critic_loss = rl_model.learn()
-
+            if intime_steps % gap == 0:
                 rl_model.memory.beta = min(rl_model.memory.beta_max,
                                           intime_steps *
                                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
-                tmp_train_ctritics = critic_loss
+
+                for _ in range(args.rl_train_iters):
+                    critic_loss = rl_model.learn()
+
+                    # rl_model.memory.beta = min(rl_model.memory.beta_max,
+                    #                           intime_steps *
+                    #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
+                    tmp_train_ctritics = critic_loss
 
         if intime_steps % gap == 0:
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
@@ -381,7 +386,6 @@ if __name__ == '__main__':
             val_rewards_records.append(test_rewards)
             timesteps.append(intime_steps)
             val_aucs.append(auc)
-            print(rl_model.memory.beta)
 
             train_critics.append(tmp_train_ctritics)
 
@@ -396,12 +400,12 @@ if __name__ == '__main__':
                            np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
 
             record_param_steps += 1
-            if args.run_steps <= intime_steps <= args.stop_steps:
-                if eva_stopping(early_rewards, args):
-                    max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
-                    early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
-                    is_early_stop = True
-                    break
+
+            if eva_stopping(early_rewards, args):
+                max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
+                early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
+                is_early_stop = True
+                break
 
             torch.cuda.empty_cache()
 

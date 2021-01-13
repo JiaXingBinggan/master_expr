@@ -24,7 +24,7 @@ class Memory(object):
         self.transition_lens = transition_lens  # 存储的数据长度
         self.epsilon = 1e-3  # 防止出现zero priority
         self.alpha = 0.6  # 取值范围(0,1)，表示td error对priority的影响
-        self.beta = 0.2  # important sample， 从初始值到1
+        self.beta = 0.4  # important sample， 从初始值到1
         self.beta_min = 0.4
         self.beta_max = 1.0
         self.beta_increment_per_sampling = 0.00001
@@ -141,7 +141,7 @@ class Hybrid_Critic(nn.Module):
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.zero_()
 
-        neuron_nums = [32, 64, 16]
+        neuron_nums = [64, 128, 32]
 
         self.layers_1 = list()
         for neuron_num in neuron_nums:
@@ -198,7 +198,7 @@ class Hybrid_Actor(nn.Module):
 
         deep_input_dims = self.input_dims
 
-        neuron_nums = [32, 64, 16]
+        neuron_nums = [64, 128, 32]
         self.layers = list()
         for neuron_num in neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
@@ -378,8 +378,7 @@ class Hybrid_TD3_Model():
 
         ensemble_c_actions = torch.softmax(c_action_means, dim=-1)
 
-        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(d_q_values,
-                                                                temprature=self.temprature_min, hard=True), dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_min, hard=True), dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), c_action_means, ensemble_c_actions
 

@@ -80,7 +80,7 @@ def get_dataset(args):
     return train_data, test_data, field_nums, feature_nums
 
 if __name__ == '__main__':
-    campaign_id = '2259/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     train_data, test_data, field_nums, feature_nums = get_dataset(args)
 
