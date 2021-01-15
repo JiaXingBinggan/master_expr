@@ -266,7 +266,7 @@ if __name__ == '__main__':
     device = torch.device(args.device)  # 指定运行设备
 
     # choose_models = model_list[np.random.choice(len(model_list), 5, replace=False)]
-    choose_models = [args.ctr_model_name]
+    choose_models = ['LR']
     logger.info(campaign_id)
     logger.info('Models ' + ','.join(choose_models) + ' have been trained')
 

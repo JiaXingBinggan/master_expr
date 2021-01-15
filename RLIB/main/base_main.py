@@ -136,24 +136,37 @@ def bid_main(bid_prices, imp_datas, budget):
         cost = np.sum(win_imp_datas[:final_index, 2])
         current_cost = np.sum(win_imp_datas[:final_index, 2])
 
-        if len(win_imp_datas[final_index:, :]) > 0 and current_cost < budget:
-            budget -= current_cost
+        if len(win_imp_datas[final_index:, :]) > 0:
+            if current_cost < budget:
+                budget -= current_cost
 
-            final_imps = win_imp_datas[final_index:, :]
-            lt_budget_indexs = np.where(final_imps[:, 2] <= budget)[0]
+                final_imps = win_imp_datas[final_index:, :]
+                lt_budget_indexs = np.where(final_imps[:, 2] <= budget)[0]
 
-            final_mprice_lt_budget_imps = final_imps[lt_budget_indexs]
-            last_win_index = 0
-            for idx, imp in enumerate(final_mprice_lt_budget_imps):
-                tmp_mprice = final_mprice_lt_budget_imps[idx, 2]
-                if budget - tmp_mprice >= 0:
-                    win_clks += final_mprice_lt_budget_imps[idx, 0]
-                    real_clks += final_mprice_lt_budget_imps[idx, 0]
-                    imps += 1
-                    bids += (lt_budget_indexs[idx] - last_win_index + 1)
-                    last_win_index = lt_budget_indexs[idx]
-                    cost += tmp_mprice
-                    budget -= tmp_mprice
+                final_mprice_lt_budget_imps = final_imps[lt_budget_indexs]
+                last_win_index = 0
+                for idx, imp in enumerate(final_mprice_lt_budget_imps):
+                    tmp_mprice = final_mprice_lt_budget_imps[idx, 2]
+                    if budget - tmp_mprice >= 0:
+                        win_clks += final_mprice_lt_budget_imps[idx, 0]
+                        imps += 1
+                        bids += (lt_budget_indexs[idx] - last_win_index + 1)
+                        last_win_index = lt_budget_indexs[idx]
+                        cost += tmp_mprice
+                        budget -= tmp_mprice
+            else:
+                win_clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
+                last_win_index = 0
+                for idx, imp in enumerate(win_imp_datas):
+                    tmp_mprice = win_imp_datas[idx, 2]
+                    real_clks += win_imp_datas[idx, 0]
+                    if budget - tmp_mprice >= 0:
+                        win_clks += win_imp_datas[idx, 0]
+                        imps += 1
+                        bids += (win_imp_indexs[idx] - last_win_index + 1)
+                        last_win_index = win_imp_indexs[idx]
+                        cost += tmp_mprice
+                        budget -= tmp_mprice
     return win_clks, real_clks, bids, imps, cost
 
 
@@ -176,7 +189,7 @@ def get_dataset(args):
 
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)

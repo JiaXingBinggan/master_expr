@@ -9,6 +9,8 @@ import RLIB.models.create_data as Data
 import RLIB.models.p_model as Model
 from RLIB.models.Feature_embedding import Feature_Embedding
 
+import sklearn.preprocessing as pre
+
 import tqdm
 
 import torch
@@ -214,6 +216,7 @@ if __name__ == '__main__':
     done = 0
     epsilon_max, epsilon_min = 0.9, 0.1
     start_time = datetime.datetime.now()
+    stand_scaler = pre.StandardScaler()
     for ep in range(args.episodes):
         budget = B
         next_statistics = [0, 0, 0]  # 用于记录临时特征remain_b,remain_t,next_ctr
@@ -239,8 +242,11 @@ if __name__ == '__main__':
 
                 win_clk_rate = win_clks / with_clks if real_clks else 0
                 win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
+                remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23)
 
-                s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
+                s_array = stand_scaler.fit_transform(np.array([remain_budget_on_hour_rate, ctr,
+                                                win_clk_rate, win_no_clk_rate]).reshape(-1, 1))
+                s_t = torch.Tensor(s_array.flatten())
 
                 bids += 1
                 action = rl_model.choose_action(s_t.unsqueeze(0).to(device))
@@ -256,7 +262,6 @@ if __name__ == '__main__':
                         win_clks += 1
                     else:
                         win_no_clks += 1
-                remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23)
 
                 r_t = reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate)
 
@@ -267,6 +272,7 @@ if __name__ == '__main__':
                                                             [(datetime.datetime.now() - start_time).seconds]))
 
         loss = rl_model.learn()
+        print(loss)
         train_losses.append(total_loss)
 
     train_loss_df = pd.DataFrame(data=train_losses)
@@ -300,7 +306,11 @@ if __name__ == '__main__':
             win_clk_rate = win_clks / with_clks if real_clks else 0
             win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
 
-            s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
+            remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23)
+
+            s_array = stand_scaler.fit_transform(np.array([remain_budget_on_hour_rate, ctr,
+                                                           win_clk_rate, win_no_clk_rate]).reshape(-1, 1))
+            s_t = torch.Tensor(s_array.flatten())
 
             bids += 1
             hour_bids[hour] += 1

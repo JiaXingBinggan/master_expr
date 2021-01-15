@@ -198,7 +198,7 @@ class Hybrid_Actor(nn.Module):
 
         deep_input_dims = self.input_dims
 
-        neuron_nums = [32, 64, 16]
+        neuron_nums = [128,64]
         self.layers = list()
         for neuron_num in neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
@@ -320,7 +320,7 @@ class Hybrid_TD3_Model():
 
         self.input_dims = self.action_nums + 1
 
-        self.memory = Memory(self.memory_size, self.input_dims * 2 + self.action_nums * 2 + 2, self.device)
+        self.memory = Memory(self.memory_size, self.input_dims * 2 + self.action_nums * 2 + 1, self.device)
 
         self.Hybrid_Actor = Hybrid_Actor(self.input_dims, self.action_nums).to(self.device)
         self.Hybrid_Critic = Hybrid_Critic(self.input_dims, self.action_nums).to(self.device)
@@ -350,11 +350,11 @@ class Hybrid_TD3_Model():
             td_errors = torch.cat(
                 [torch.max(self.memory.prioritys_).expand_as(torch.ones(size=[len(transitions), 1])).to(self.device),
                  transitions[:, -1].view(-1, 1)], dim=-1).detach()
-            #
+
         self.memory.add(td_errors, transitions.detach())
 
     def choose_action(self, state, random):
-        self.Hybrid_Actor.train()
+        self.Hybrid_Actor.eval()
         with torch.no_grad():
             c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions = self.Hybrid_Actor.act(state,
                                                                                                   self.temprature)
@@ -462,9 +462,8 @@ class Hybrid_TD3_Model():
         b_c_a = batch_memory[:, self.input_dims: self.input_dims + self.action_nums]
         b_d_a = batch_memory[:,
                 self.input_dims + self.action_nums: self.input_dims + self.action_nums * 2]
-        b_discrete_a = torch.unsqueeze(batch_memory[:, self.input_dims + self.action_nums * 2], 1)
-        b_r = torch.unsqueeze(batch_memory[:, -self.input_dims - 1], 1)
-        b_s_ = batch_memory[:, -self.input_dims:] # embedding_layer.forward(batch_memory_states)
+        b_r = torch.unsqueeze(batch_memory[:, -1], 1)
+        b_s_ = batch_memory[:, -self.input_dims - 1: -1] # embedding_layer.forward(batch_memory_states)
 
         with torch.no_grad():
             c_actions_means_next, d_actions_q_values_next = self.Hybrid_Actor_.evaluate(b_s_)
@@ -474,8 +473,8 @@ class Hybrid_TD3_Model():
 
             # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.softmax(c_actions_means_next, dim=-1))
             # next_c_actions = torch.softmax(c_actions_means_next + torch.normal(c_actions_means_next, 0.2), dim=-1)
-            # next_c_actions = self.to_next_state_c_actions(next_d_actions, c_actions_means_next)
-            next_c_actions = c_actions_means_next + torch.clamp(torch.randn_like(c_actions_means_next)* 0.2, -0.5, 0.5)
+            next_c_actions = self.to_next_state_c_actions(next_d_actions, c_actions_means_next)
+            # next_c_actions = c_actions_means_next + torch.clamp(torch.randn_like(c_actions_means_next)* 0.2, -0.5, 0.5)
 
             q1_target, q2_target = \
                 self.Hybrid_Critic_.evaluate(b_s_, next_c_actions, next_d_actions)
@@ -505,8 +504,8 @@ class Hybrid_TD3_Model():
 
             d_actions_q_values_ = gumbel_softmax_sample(logits=d_actions_q_values, temprature=self.temprature_min,
                                                         hard=False)
-            # c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)
-            c_actions_means_ = c_actions_means
+            c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)
+            # c_actions_means_ = c_actions_means
 
             # Hybrid_Actor
             # c_action_softmax = torch.softmax(c_actions_means, dim=-1)

@@ -25,7 +25,7 @@ class Net(nn.Module):
         self.action_nums = action_nums
 
         self.layers = list()
-        neuron_nums = [32, 64, 16]
+        neuron_nums = [64]
 
         deep_input_dims = 4 # b,t,pctr
         for neuron_num in neuron_nums:
@@ -42,7 +42,7 @@ class Net(nn.Module):
         self.mlp = nn.Sequential(*self.layers)
 
     def forward(self, input):
-        actions_value = self.mlp(input)
+        actions_value = gumbel_softmax_sample(self.mlp(input))
 
         return actions_value
 
@@ -88,30 +88,32 @@ class PolicyGradient:
         self.weight_decay = weight_decay
         self.device = device
 
-        self.ep_states, self.ep_as, self.ep_rs = [], [], [] # 状态，动作，奖励，在一轮训练后存储
+        self.ep_states, self.ep_as, self.ep_rs = [], [], []
 
         self.policy_net = Net(self.action_nums).to(self.device)
 
-        self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=self.lr)
 
     def loss_func(self, all_act_prob, acts, vt):
-        neg_log_prob = -torch.log(all_act_prob.gather(1, acts)).to(self.device)
-        loss = torch.mean(torch.mul(neg_log_prob, vt)).to(self.device)
-
+        log_prob = torch.log(all_act_prob.gather(1, acts)).to(self.device)
+        log_probs = torch.mul(log_prob, vt)
+        entropies = all_act_prob * all_act_prob.log()
+        loss = -(log_probs - entropies).mean()
         return loss
 
     # 依据概率来选择动作，本身具有随机性
     def choose_action(self, state):
         self.policy_net.train()
         torch.cuda.empty_cache()
-        prob_weights = self.policy_net.forward(state)
+        prob_weights = self.policy_net.forward(state).cpu().detach().numpy()
 
-        action = torch.argmax(torch.normal(prob_weights, 0.5), dim=-1).item()
+        action = np.random.choice(range(self.action_nums), p=prob_weights.ravel())
+
         return action
 
     def choose_best_action(self, state):
         self.policy_net.eval()
-        return torch.argmax(gumbel_softmax_sample(self.policy_net.forward(state), temprature=0.1), dim=-1).item()
+        return torch.argmax(self.policy_net.forward(state), dim=-1).item()
 
     # 储存一回合的s,a,r；因为每回合训练
     def store_transition(self, s, a, r):
@@ -139,20 +141,34 @@ class PolicyGradient:
         torch.cuda.empty_cache()
         self.policy_net.train()
 
-        # 对每一回合的奖励，进行折扣计算以及归一化
+        # # 对每一回合的奖励，进行折扣计算以及归一化
         discounted_ep_rs_norm = self.discount_and_norm_rewards()
         states = torch.FloatTensor(self.ep_states).to(self.device)
         acts = torch.unsqueeze(torch.LongTensor(self.ep_as), 1).to(self.device)
         vt = torch.FloatTensor(discounted_ep_rs_norm).view(-1, 1).to(self.device)
 
-        all_act_probs = gumbel_softmax_sample(self.policy_net.forward(states), hard=False).squeeze(1)
+        all_act_probs = self.policy_net.forward(states).squeeze(1)
 
         loss = self.loss_func(all_act_probs, acts, vt)
-        print(loss)
+
         self.optimizer.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_norm_(self.policy_net.parameters(), 40, norm_type=2)
         self.optimizer.step()
-        # print(self.policy_net.mlp[0].weight)
+
+        # R = torch.zeros(1, 1)
+        # loss = 0
+        # for i in reversed(range(len(self.ep_rs))):
+        #     R = self.gamma * R + self.ep_rs[i]
+        #     loss = loss - (self.ep_logps[i] * (Variable(R).expand_as(self.ep_logps[i])).to(self.device)).sum() - (
+        #                 0.001 * self.ep_entropies[i].to(self.device)).sum()
+        # loss = loss / len(self.ep_rs)
+        #
+        # self.optimizer.zero_grad()
+        # loss.backward()
+        # nn.utils.clip_grad_norm_(self.policy_net.parameters(), 10, norm_type=2)
+        # self.optimizer.step()
+
         # 训练完后清除训练数据，开始下一轮
         self.ep_states, self.ep_as, self.ep_rs = [], [], []
         return loss.item()
