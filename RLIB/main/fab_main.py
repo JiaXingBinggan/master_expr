@@ -153,7 +153,7 @@ def reward_func(fab_clks, hb_clks, fab_cost, hb_cost):
     else:
         r = -2.5
 
-    return r / 10000
+    return r / 1000
 
 '''
 1458
@@ -220,16 +220,16 @@ if __name__ == '__main__':
     rl_model = get_model(args.rl_batch_size, device)
     B = args.budget * args.budget_para[0]
     print(B)
-    #
-    # hb_clk_dict = {}
-    # for para in actions:
-    #     bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
-    #     res_ = bid_main(bid_datas, train_data, B)
-    #     hb_clk_dict.setdefault(para, res_[0])
-    #
-    # hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
-    # print(hb_base)
-    hb_base = 60
+
+    hb_clk_dict = {}
+    for para in actions:
+        bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
+        res_ = bid_main(bid_datas, train_data, B)
+        hb_clk_dict.setdefault(para, res_[0])
+
+    hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
+    print(hb_base)
+    # hb_base = 60
     hour_data = test_data[test_data[:, 3] == 0]
     bid_datas = generate_bid_price(hour_data[:, 1] * hb_base / origin_ctr)
     res_ = bid_main(bid_datas, hour_data, B)
@@ -301,42 +301,46 @@ if __name__ == '__main__':
 
         # print('train', records, critic_loss)
 
-        test_records = [0, 0, 0, 0, 0]
-        tmp_test_state = [1, 0, 0, 0]
-        init_test_state = [1, 0, 0, 0]
-        test_rewards = 0
-        budget = B
-        for t in range(24):
-            if budget > 0:
-                hour_datas = test_data[test_data[:, hour_index] == t]
+        if ep % 10 == 0:
+            test_records = [0, 0, 0, 0, 0]
+            tmp_test_state = [1, 0, 0, 0]
+            init_test_state = [1, 0, 0, 0]
+            test_rewards = 0
+            budget = B
+            hour_t = 0
+            for t in range(24):
+                if budget > 0:
+                    hour_datas = test_data[test_data[:, hour_index] == t]
 
-                state = torch.tensor(init_test_state).float() if not t else torch.tensor(tmp_test_state).float()
+                    state = torch.tensor(init_test_state).float() if not t else torch.tensor(tmp_test_state).float()
 
-                action = rl_model.choose_action(state.unsqueeze(0))[0, 0].item()
+                    action = rl_model.choose_action(state.unsqueeze(0))[0, 0].item()
 
-                bid_datas = generate_bid_price((hour_datas[:, ctr_index] * hb_base / origin_ctr) / (1 + action))
-                res_ = bid_main(bid_datas, hour_datas, budget)
+                    bid_datas = generate_bid_price((hour_datas[:, ctr_index] * hb_base / origin_ctr) / (1 + action))
+                    res_ = bid_main(bid_datas, hour_datas, budget)
 
-                # win_clks, real_clks, bids, imps, cost
+                    # win_clks, real_clks, bids, imps, cost
 
-                test_records = [test_records[i] + res_[i] for i in range(len(records))]
-                budget -= res_[-1]
+                    test_records = [test_records[i] + res_[i] for i in range(len(records))]
+                    budget -= res_[-1]
 
-                hb_bid_datas = generate_bid_price(hour_datas[:, ctr_index] * hb_base / origin_ctr)
-                res_hb = bid_main(hb_bid_datas, hour_datas, budget)
+                    hb_bid_datas = generate_bid_price(hour_datas[:, ctr_index] * hb_base / origin_ctr)
+                    res_hb = bid_main(hb_bid_datas, hour_datas, budget)
 
-                r_t = reward_func(res_[0], res_hb[0], res_[3], res_hb[3])
-                test_rewards += r_t
+                    r_t = reward_func(res_[0], res_hb[0], res_[3], res_hb[3])
+                    test_rewards += r_t
 
-                left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
-                # avg_budget_ratio, cost_ratio, ctr, win_rate
-                next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
-                              res_[4] / B,
-                              res_[0] / res_[3] if res_[3] else 0,
-                              res_[3] / res_[2] if res_[2] else 0]
-                tmp_test_state = next_state
+                    left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
+                    # avg_budget_ratio, cost_ratio, ctr, win_rate
+                    next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
+                                  res_[4] / B,
+                                  res_[0] / res_[3] if res_[3] else 0,
+                                  res_[3] / res_[2] if res_[2] else 0]
+                    tmp_test_state = next_state
 
-        print(ep, 'test', test_records, test_rewards)
+                    hour_t += 1
+
+            print(ep, 'test', test_records, test_rewards / hour_t)
 
 
 

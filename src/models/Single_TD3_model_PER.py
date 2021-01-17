@@ -115,7 +115,7 @@ class Memory(object):
         self.prioritys_[choose_idx, 0:1] = td_errors
 
 
-def weight_init_critic(layers):
+def weight_init(layers):
     # source: The other layers were initialized from uniform distributions
     # [− 1/sqrt(f) , 1/sqrt(f) ] where f is the fan-in of the layer
     for layer in layers:
@@ -125,20 +125,8 @@ def weight_init_critic(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(0, lim)
+            layer.weight.data.uniform_(-lim, lim)
             layer.bias.data.fill_(0)
-
-def weight_init_actor(layers):
-    # source: The other layers were initialized from uniform distributions
-    # [− 1/sqrt(f) , 1/sqrt(f) ] where f is the fan-in of the layer
-    for layer in layers:
-        if isinstance(layer, nn.BatchNorm1d):
-            layer.weight.data.fill_(1)
-            layer.bias.data.zero_()
-        elif isinstance(layer, nn.Linear):
-            layer.weight.data.uniform_(-0.003, 0.003)
-            layer.bias.data.fill_(0)
-
 
 class Critic(nn.Module):
     def __init__(self, input_dims, action_nums):
@@ -152,7 +140,7 @@ class Critic(nn.Module):
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.zero_()
 
-        neuron_nums = [128, 64]
+        neuron_nums = [32, 64, 16]
 
         self.layers_1 = list()
         for neuron_num in neuron_nums:
@@ -210,7 +198,7 @@ class Actor(nn.Module):
 
         deep_input_dims = self.input_dims
 
-        neuron_nums = [128, 64]
+        neuron_nums = [32, 64, 16]
         self.layers = list()
         for neuron_num in neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
@@ -219,10 +207,9 @@ class Actor(nn.Module):
             self.layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
-        # weight_init_actor(self.layers)
 
-        self.layers.append(nn.Linear(deep_input_dims, 1))
-        self.layers[-1].weight.data.uniform_(-0.003, 0.003)
+        self.layers.append(nn.Linear(deep_input_dims, self.action_dims))
+        weight_init([self.layers[-1]])
 
         self.layers.append(nn.Tanh())
 
@@ -251,7 +238,7 @@ class TD3_Model():
             reward_decay=1.0,
             memory_size=10000,
             batch_size=256,
-            tau=0.005,  # for target network soft update
+            tau=0.0005,  # for target network soft update
             random_seed=1234,
             device='cuda:0',
     ):
@@ -268,9 +255,9 @@ class TD3_Model():
 
         self.memory_counter = 0
 
-        self.input_dims = 4
+        self.input_dims = self.action_nums + 1
 
-        self.memory = Memory(self.memory_size, self.input_dims * 2 + self.action_nums + 2, self.device)
+        self.memory = Memory(self.memory_size, self.input_dims * 2 + self.action_nums + 1, self.device)
 
         self.Actor = Actor(self.input_dims, self.action_nums).to(self.device)
         self.Critic = Critic(self.input_dims, self.action_nums).to(self.device)
@@ -285,7 +272,7 @@ class TD3_Model():
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.learn_iter = 0
-        self.policy_freq = 10
+        self.policy_freq = 3
 
     def store_transition(self, transitions):  # 所有的值都应该弄成float
         if torch.max(self.memory.prioritys_) == 0.:
@@ -301,19 +288,19 @@ class TD3_Model():
     def choose_action(self, state):
         self.Actor.eval()
         with torch.no_grad():
-            actions_means = self.Actor.act(state.to(self.device))
-            res_actions = torch.clamp(actions_means + torch.randn_like(actions_means) * 0.1, -0.99, 0.99)
+            action_means = torch.clamp(self.Actor.act(state.to(self.device)), -1.0, 1.0)
+            res_actions = action_means + torch.randn_like(action_means) * 0.1
         self.Actor.train()
 
-        return res_actions
+        return res_actions,  torch.softmax(action_means, dim=-1)
 
     def choose_best_action(self, state):
         self.Actor.eval()
         with torch.no_grad():
-            action_means = torch.clamp(self.Actor.evaluate(state), -0.99, 0.99)
+            action_means = self.Actor.evaluate(state)
         self.Actor.train()
 
-        return action_means
+        return action_means, torch.softmax(action_means, dim=-1)
 
     def soft_update(self, net, net_target):
         for param_target, param in zip(net_target.parameters(), net.parameters()):
@@ -322,10 +309,10 @@ class TD3_Model():
     def learn(self):
         self.learn_iter += 1
 
-        # self.Actor.train()
-        # self.Actor_.train()
-        # self.Critic.train()
-        # self.Critic_.train()
+        self.Actor.train()
+        self.Actor_.train()
+        self.Critic.train()
+        self.Critic_.train()
 
         # sample
         choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
@@ -347,7 +334,7 @@ class TD3_Model():
             actions_means_next = self.Actor_.evaluate(b_s_)
             actions_means_next = torch.clamp(actions_means_next +
                                              torch.clamp(torch.randn_like(actions_means_next) * 0.2, -0.5, 0.5),
-                                             -0.99, 0.99)
+                                             -1.0, 1.0)
 
             q1_target, q2_target = \
                 self.Critic_.evaluate(b_s_, actions_means_next)
@@ -365,7 +352,7 @@ class TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.Critic.parameters(), max_norm=40, norm_type=2)
+        # nn.utils.clip_grad_norm_(self.Critic.parameters(), max_norm=10, norm_type=2)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -380,7 +367,7 @@ class TD3_Model():
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            nn.utils.clip_grad_norm_(self.Actor.parameters(), max_norm=40, norm_type=2)
+            # nn.utils.clip_grad_norm_(self.Actor.parameters(), max_norm=10, norm_type=2)
             self.optimizer_a.step()
 
             self.soft_update(self.Critic, self.Critic_)

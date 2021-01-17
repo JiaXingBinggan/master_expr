@@ -7,7 +7,7 @@ import argparse
 import random
 from sklearn.metrics import roc_auc_score
 import src.models.p_model as Model
-import src.models.v12_Hybrid_TD3_model_PER as td3_model
+import src.models.Single_TD3_model_PER as td3_model
 import src.models.creat_data as Data
 from src.models.Feature_embedding import Feature_Embedding
 
@@ -30,137 +30,48 @@ def setup_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def get_model(action_nums, init_lr_a, init_lr_c, data_len, train_batch_size, memory_size, random_seed, device, campaign_id):
-    RL_model = td3_model.Hybrid_TD3_Model(action_nums=action_nums, lr_C_A=init_lr_a, lr_D_A=init_lr_a, lr_C=init_lr_c,
-                                          data_len=data_len, batch_size=train_batch_size,
-                                          campaign_id=campaign_id,
+def get_model(action_nums, init_lr_a, init_lr_c, train_batch_size, memory_size, random_seed, device):
+    RL_model = td3_model.TD3_Model(action_nums=action_nums, lr_A=init_lr_a, lr_C=init_lr_c,
+                                          batch_size=train_batch_size,
                                           memory_size=memory_size, random_seed=random_seed, device=device)
 
     return RL_model
 
-def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_actions,
-                   labels, device, mode):
-    y_preds = torch.ones_like(actions, dtype=torch.float)
-    rewards = torch.ones_like(actions, dtype=torch.float)
+def generate_preds(pretrain_y_preds, ensemble_c_actions,
+                   labels, device):
 
-    sort_prob_weights, sortindex_prob_weights = torch.sort(-prob_weights, dim=1)
+    model_y_preds = torch.mul(ensemble_c_actions, pretrain_y_preds).mean(dim=-1).view(-1, 1)
+    pretrain_y_pred_means = pretrain_y_preds.mean(dim=-1).view(-1, 1)
 
-    return_c_actions = torch.zeros(size=(pretrain_y_preds.size()[0], ensemble_nums)).to(device)
-    return_ctrs = torch.zeros(size=(pretrain_y_preds.size()[0], ensemble_nums)).to(device)
+    with_clk_indexs = (labels == 1).nonzero()[:, 0]
+    without_clk_indexs = (labels == 0).nonzero()[:, 0]
 
-    choose_model_lens = range(1, ensemble_nums + 1)
-    for i in choose_model_lens:  # 根据ddqn_model的action,判断要选择ensemble的数量
-        with_action_indexs = (actions == i).nonzero()[:, 0]
-        current_choose_models = sortindex_prob_weights[with_action_indexs][:, :i]
-        current_basic_rewards = torch.ones(size=[len(with_action_indexs), 1]).to(device) * 1
-        current_prob_weights = prob_weights[with_action_indexs]
+    basic_rewards = torch.ones_like(labels).float()
 
-        current_with_clk_indexs = (labels[with_action_indexs] == 1).nonzero()[:, 0]
-        current_without_clk_indexs = (labels[with_action_indexs] == 0).nonzero()[:, 0]
+    with_clk_rewards = torch.where(
+        model_y_preds[with_clk_indexs] > pretrain_y_pred_means[with_clk_indexs],
+        basic_rewards[with_clk_indexs] * 1,
+        basic_rewards[with_clk_indexs] * 0
+    )
 
-        current_pretrain_y_preds = pretrain_y_preds[with_action_indexs, :]
+    without_clk_rewards = torch.where(
+        model_y_preds[without_clk_indexs] < pretrain_y_pred_means[without_clk_indexs],
+        basic_rewards[without_clk_indexs] * 1,
+        basic_rewards[without_clk_indexs] * 0
+    )
 
-        current_c_actions = c_actions[with_action_indexs, :]
-        current_ctrs = current_pretrain_y_preds
-        if i == ensemble_nums:
-            current_y_preds = torch.sum(torch.mul(current_prob_weights, current_pretrain_y_preds), dim=1).view(-1, 1)
-            y_preds[with_action_indexs, :] = current_y_preds
+    basic_rewards[with_clk_indexs] = with_clk_rewards
+    basic_rewards[without_clk_indexs] = without_clk_rewards
 
-            return_c_actions[with_action_indexs, :] = current_c_actions
-            return_ctrs[with_action_indexs, :] = current_ctrs
-        elif i == 1:
-            current_y_preds = torch.ones(size=[len(with_action_indexs), 1]).to(device)
-            current_c_actions_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-            current_ctrs_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-            for k in range(ensemble_nums):
-                choose_model_indexs = (current_choose_models == k).nonzero()[:, 0] # 找出下标
-                current_y_preds[choose_model_indexs, 0] = current_pretrain_y_preds[choose_model_indexs, k]
+    return_ctrs = torch.mul(ensemble_c_actions, pretrain_y_preds)
 
-                current_c_actions_temp[choose_model_indexs, k] = current_c_actions[choose_model_indexs, k]
-
-                current_ctrs_temp[choose_model_indexs, k] = current_ctrs[choose_model_indexs, k]
-
-            y_preds[with_action_indexs, :] = current_y_preds
-            return_c_actions[with_action_indexs, :] = current_c_actions_temp
-            return_ctrs[with_action_indexs, :] = current_ctrs_temp
-        else:
-            current_softmax_weights = torch.softmax(
-                sort_prob_weights[with_action_indexs][:, :i] * -1, dim=1
-            ).to(device)  # 再进行softmax
-
-            current_row_preds = torch.ones(size=[len(with_action_indexs), i]).to(device)
-            current_c_actions_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-            current_ctrs_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-            current_softmax_weights_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-
-            for m in range(i):
-                current_row_choose_models = current_choose_models[:, m:m + 1]  # 这个和current_c_actions等长
-
-                for k in range(ensemble_nums):
-                    current_pretrain_y_pred = current_pretrain_y_preds[:, k: k + 1]
-                    choose_model_indexs = (current_row_choose_models == k).nonzero()[:, 0]
-
-                    current_row_preds[choose_model_indexs, m:m + 1] = current_pretrain_y_pred[choose_model_indexs]
-
-                    current_c_actions_temp[choose_model_indexs, k:k + 1] = current_c_actions[choose_model_indexs,
-                                                                           k: k + 1]
-
-                    current_ctrs_temp[choose_model_indexs, k: k + 1] = current_ctrs[choose_model_indexs, k: k + 1]
-
-                    current_softmax_weights_temp[choose_model_indexs, k: k + 1] = current_softmax_weights[
-                                                                                  choose_model_indexs, m: m + 1]
-
-            current_y_preds = torch.sum(torch.mul(current_softmax_weights, current_row_preds), dim=1).view(-1, 1)
-            y_preds[with_action_indexs, :] = current_y_preds
-
-            return_c_actions[with_action_indexs, :] = current_c_actions_temp  # 为了让没有使用到的位置,值置为0
-            return_ctrs[with_action_indexs, :] = torch.mul(current_softmax_weights_temp, current_ctrs_temp)
-
-        with_clk_rewards = torch.where(
-            current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
-                current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * 0
-        )
-
-        # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
-        #         current_with_clk_indexs].mean(dim=1).view(-1, 1)
-
-        without_clk_rewards = torch.where(
-            current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
-                current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * 0
-        )
-        # without_clk_rewards = current_pretrain_y_preds[
-        #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
-
-        # print(-labels[with_action_indexs].float() * current_y_preds - (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) *
-        #       (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - current_y_preds).log())
-        # bce_loss = -labels[with_action_indexs].float() * current_y_preds.log() - \
-        #            (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) * (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - current_y_preds).log()
-
-        # if len(current_with_clk_indexs) > 0:
-        # print('with clk', current_y_preds[current_with_clk_indexs], current_y_preds[current_with_clk_indexs].log())
-        #     print('clk', bce_loss[current_with_clk_indexs])
-
-        # print('without clk', current_y_preds[current_without_clk_indexs], torch.exp(-current_y_preds[current_without_clk_indexs]))
-
-        current_basic_rewards[current_with_clk_indexs] = with_clk_rewards
-        current_basic_rewards[current_without_clk_indexs] = without_clk_rewards
-        # print(current_basic_rewards[current_without_clk_indexs])
-
-        rewards[with_action_indexs, :] = current_basic_rewards
-
-    return y_preds, rewards, return_c_actions, return_ctrs
+    return model_y_preds, basic_rewards, return_ctrs
 
 
 def test(rl_model, ensemble_nums, data_loader, device):
     targets, predicts = list(), list()
     intervals = 0
-    total_test_loss = 0
     test_rewards = torch.FloatTensor().to(device)
-    final_actions = torch.LongTensor().to(device)
     final_prob_weights = torch.FloatTensor().to(device)
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
@@ -169,10 +80,9 @@ def test(rl_model, ensemble_nums, data_loader, device):
 
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
-            actions, c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
+            c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_c_actions, return_ctrs = generate_preds(ensemble_nums, current_pretrain_y_preds, actions, ensemble_c_actions, c_actions,
-                                                          labels, device, mode='test')
+            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, ensemble_c_actions, labels, device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
@@ -180,15 +90,13 @@ def test(rl_model, ensemble_nums, data_loader, device):
 
             test_rewards = torch.cat([test_rewards, rewards], dim=0)
 
-            final_actions = torch.cat([final_actions, actions], dim=0)
             final_prob_weights = torch.cat([final_prob_weights, ensemble_c_actions], dim=0)
 
-    return roc_auc_score(targets, predicts), predicts, test_rewards.mean().item(), final_actions, final_prob_weights
+    return roc_auc_score(targets, predicts), predicts, test_rewards.mean().item(), final_prob_weights
 
 
 def submission(rl_model, ensemble_nums, data_loader, device):
     targets, predicts = list(), list()
-    final_actions = torch.LongTensor().to(device)
     final_prob_weights = torch.FloatTensor().to(device)
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
@@ -196,18 +104,16 @@ def submission(rl_model, ensemble_nums, data_loader, device):
 
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
-            actions, c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
+            c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_c_actions, return_ctrs = generate_preds(ensemble_nums, current_pretrain_y_preds, actions, ensemble_c_actions, c_actions,
-                                                          labels, device, mode='test')
+            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, ensemble_c_actions, labels, device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
 
-            final_actions = torch.cat([final_actions, actions], dim=0)
             final_prob_weights = torch.cat([final_prob_weights, ensemble_c_actions], dim=0)
 
-    return predicts, roc_auc_score(targets, predicts), final_actions.cpu().numpy(), final_prob_weights.cpu().numpy()
+    return predicts, roc_auc_score(targets, predicts), final_prob_weights.cpu().numpy()
 
 def get_ensemble_model(model_name, feature_nums, field_nums, latent_dims):
     if model_name == 'LR':
@@ -270,7 +176,7 @@ def get_dataset(args):
 if __name__ == '__main__':
     campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-
+    args.rl_model_name = 'S_RL_CTR'
     train_data, test_data = get_dataset(args)
 
     # 设置随机数种子
@@ -311,9 +217,9 @@ if __name__ == '__main__':
 
     data_len = len(train_data)
 
-    rl_model = get_model(model_dict_len, args.init_lr_a, args.init_lr_c, data_len,
+    rl_model = get_model(model_dict_len, args.init_lr_a, args.init_lr_c,
                      args.rl_batch_size,
-                     args.memory_size, args.seed, device, campaign_id)
+                     args.memory_size, args.seed, device)
 
     loss = nn.BCELoss()
 
@@ -347,40 +253,34 @@ if __name__ == '__main__':
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
     train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
-    # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
-    # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_batch_size, num_workers=8, shuffle=1)
+
     while intime_steps <= args.stop_steps:
         batchs = train_batch_gen.__next__()
         labels = torch.Tensor(batchs[:, 0: 1]).long().to(device)
         current_pretrain_y_preds = torch.Tensor(batchs[:, 1:]).float().to(device)
-    # for i, (pretrain_y_preds, labels) in enumerate(train_data_loader):
-    #     intime_steps = (i + 1) * args.rl_iter_size
-    #     current_pretrain_y_preds, labels = pretrain_y_preds.float().to(device), labels.long().unsqueeze(1).to(device)
 
         s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
-        c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions = rl_model.choose_action(
-            s_t, False if intime_steps >= gap else True)
+        c_actions, ensemble_c_actions = rl_model.choose_action(
+            s_t)
 
-        y_preds, rewards, return_c_actions, return_ctrs = \
-            generate_preds(args.ensemble_nums, current_pretrain_y_preds, ensemble_d_actions, ensemble_c_actions, c_actions, labels, device,
-                           mode='train')
+        y_preds, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, ensemble_c_actions, labels, device)
 
         s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
         transitions = torch.cat(
-            [s_t, return_c_actions, d_q_values, s_t_, rewards],
+            [s_t, c_actions, s_t_, rewards],
             dim=1)
 
         rl_model.store_transition(transitions)
 
         if intime_steps >= args.rl_batch_size:
-            if intime_steps % gap == 0:
+            if intime_steps % 2000 == 0:
             # rl_model.memory.beta = min(rl_model.memory.beta_max,
             #                           intime_steps *
             #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
 
-                for _ in range(args.rl_train_iters):
+                for _ in range(128):
                     critic_loss = rl_model.learn()
 
                     # rl_model.memory.beta = min(rl_model.memory.beta_max,
@@ -389,7 +289,7 @@ if __name__ == '__main__':
                     tmp_train_ctritics = critic_loss
 
         if intime_steps % gap == 0:
-            auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
+            auc, predicts, test_rewards, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
             logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, [{}s]'.format(
                 args.rl_model_name, intime_steps, auc, test_rewards, (datetime.datetime.now() - train_start_time).seconds))
             val_rewards_records.append(test_rewards)
@@ -398,13 +298,9 @@ if __name__ == '__main__':
 
             train_critics.append(tmp_train_ctritics)
 
-            rl_model.temprature = max(rl_model.temprature_min,
-                                       rl_model.temprature_max - intime_steps *
-                                       (rl_model.temprature_max - rl_model.temprature_min) / (args.run_steps * 0.8))
-
             early_aucs.append([record_param_steps, auc])
             early_rewards.append([record_param_steps, test_rewards])
-            torch.save(rl_model.Hybrid_Actor.state_dict(),
+            torch.save(rl_model.Actor.state_dict(),
                        args.save_param_dir + args.campaign_id + args.rl_model_name + str(
                            np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
 
@@ -420,25 +316,23 @@ if __name__ == '__main__':
 
         intime_steps += batchs.shape[0]
 
-    logger.info('Final gumbel Softmax temprature is {}'.format(rl_model.temprature))
-
     train_end_time = datetime.datetime.now()
 
     '''
     要不要早停
     '''
     if is_early_stop:
-        test_rl_model = get_model(model_dict_len, args.init_lr_a, args.init_lr_c, data_len,
+        test_rl_model = get_model(model_dict_len, args.init_lr_a, args.init_lr_c,
                      args.rl_batch_size,
-                     args.memory_size, args.seed, device, campaign_id)
+                     args.memory_size, args.seed, device)
         load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
                                early_stop_index) + '.pth'
 
-        test_rl_model.Hybrid_Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
+        test_rl_model.Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
     else:
         test_rl_model = rl_model
 
-    test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
+    test_predicts, test_auc, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
                                                                           device)
 
     for i in range(args.rl_early_stop_iter):
@@ -451,10 +345,6 @@ if __name__ == '__main__':
     prob_weights_df = pd.DataFrame(data=test_prob_weights)
     prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
                            + args.sample_type + '.csv', header=None)
-
-    actions_df = pd.DataFrame(data=test_actions)
-    actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
-                      + args.sample_type + '.csv', header=None)
 
     valid_aucs_df = pd.DataFrame(data=val_aucs)
     valid_aucs_df.to_csv(submission_path + 'val_aucs_' + str(args.ensemble_nums) + '_'

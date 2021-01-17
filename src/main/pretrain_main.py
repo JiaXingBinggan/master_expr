@@ -239,12 +239,17 @@ def get_dataset(args):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '3476/' # 1458, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/' # 1458, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)
+
+    log_dirs = [args.save_log_dir, args.save_log_dir + args.campaign_id]
+    for log_dir in log_dirs:
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
 
     logging.basicConfig(level=logging.DEBUG,
                         filename=args.save_log_dir + str(args.campaign_id).strip('/') + '_output.log',
@@ -257,11 +262,6 @@ if __name__ == '__main__':
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setLevel(logging.INFO)
     logger.addHandler(stream_handler)
-
-    log_dirs = [args.save_log_dir, args.save_log_dir + args.campaign_id]
-    for log_dir in log_dirs:
-        if not os.path.exists(log_dir):
-            os.mkdir(log_dir)
 
     param_dirs = [args.save_param_dir, args.save_param_dir + args.campaign_id]
     for param_dir in param_dirs:

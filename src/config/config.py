@@ -40,7 +40,7 @@ def init_parser(campaign_id):
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi, avazu')
     parser.add_argument('--campaign_id', default='2259/', help='1458, 3358, 3386, 3427, 3476, avazu')
     parser.add_argument('--model_name', default='LR', help='LR, FM, FFM, W&D, FNN, DeepFM, IPNN, OPNN, DCN, AFM')
-    parser.add_argument('--latent_dims', default=8)
+    parser.add_argument('--latent_dims', default=10)
     parser.add_argument('--epoch', type=int, default=100)
     parser.add_argument('--kfold', type=int, default=5)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
@@ -54,7 +54,7 @@ def init_parser(campaign_id):
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--save_param_dir', default='../models/model_params/')
     parser.add_argument('--save_log_dir', default='../main/logs/')
-    parser.add_argument('--seed', type=int, default=1024)
+    parser.add_argument('--seed', type=int, default=1)
 
     parser.add_argument('--sample_type', default='all', help='all, down, rand')
 
@@ -63,7 +63,7 @@ def init_parser(campaign_id):
     parser.add_argument('--ensemble_models', default='LR,FM,FNN,IPNN,DCN')
 
     # for RL training
-    parser.add_argument('--rl_model_name', default='Hybrid_TD3')
+    parser.add_argument('--rl_model_name', default='H_RL_CTR')
     parser.add_argument('--init_lr_a', type=float, default=3e-4)
     parser.add_argument('--end_lr_a', type=float, default=1e-4)
     parser.add_argument('--init_lr_c', type=float, default=3e-4)
@@ -73,13 +73,13 @@ def init_parser(campaign_id):
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
     parser.add_argument('--rl_batch_size', type=int, default=128)
     parser.add_argument('--rl_iter_size', type=int, default=10)
-    parser.add_argument('--rl_train_iters', type=int, default=64)
+    parser.add_argument('--rl_train_iters', type=int, default=128)
     parser.add_argument('--rl_gen_batch_size', type=int, default=4096*128)
     parser.add_argument('--memory_size', type=int, default=100000) # 感觉需要再调调
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
-    parser.add_argument('--run_steps', type=float, default=1e6)
-    parser.add_argument('--stop_steps', type=float, default=2e6)
+    parser.add_argument('--run_steps', type=float, default=5e5)
+    parser.add_argument('--stop_steps', type=float, default=6e5)
     parser.add_argument('--record_times', type=int, default=200)
     parser.add_argument('--rl_early_stop_iter', type=int, default=10)
 
@@ -91,7 +91,7 @@ def init_parser(campaign_id):
     elif args.ensemble_nums == 5:
         args.ensemble_models = 'LR,FM,FNN,W&D,IPNN'
     elif args.ensemble_nums == 7:
-        args.ensemble_models = 'LR,FM,FNN,W&D,IPNN,DCN,AFM'
+        args.ensemble_models = 'LR,FM,FNN,DeepFM,W&D,IPNN,DCN,AFM'
 
     # 设置随机数种子
     setup_seed(args.seed)

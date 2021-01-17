@@ -23,7 +23,7 @@ def init_parser(campaign_id):
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi, avazu')
     parser.add_argument('--campaign_id', default='1458/', help='1458, 3358, 3386, 3427, 3476, avazu')
-    parser.add_argument('--ctr_model_name', default='FM', help='LR,FM,FNN...')
+    parser.add_argument('--ctr_model_name', default='LR', help='LR,FM,FNN...')
     parser.add_argument('--episodes', type=int, default=1000)
     parser.add_argument('--model_name', default='RLIB')
     parser.add_argument('--lr', type=float, default=1e-2)

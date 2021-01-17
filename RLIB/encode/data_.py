@@ -380,7 +380,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
     parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427, 3476')
-    parser.add_argument('--is_to_csv', default=False)
+    parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)
 
@@ -415,11 +415,11 @@ if __name__ == '__main__':
     to_libsvm_encode(data_path, 'all', time_frac_dict)
 
     # down denotes down sample, rand denotes random sample
-    # down_sample(data_path)
-    # to_libsvm_encode(data_path, 'down', time_frac_dict)
-    #
-    # rand_sample(data_path)
-    # to_libsvm_encode(data_path, 'rand', time_frac_dict)
+    down_sample(data_path)
+    to_libsvm_encode(data_path, 'down', time_frac_dict)
+
+    rand_sample(data_path)
+    to_libsvm_encode(data_path, 'rand', time_frac_dict)
 
 
 

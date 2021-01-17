@@ -141,7 +141,7 @@ class Hybrid_Critic(nn.Module):
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.zero_()
 
-        neuron_nums = [128,64]
+        neuron_nums = [32, 64,16]
 
         self.layers_1 = list()
         for neuron_num in neuron_nums:
@@ -164,8 +164,8 @@ class Hybrid_Critic(nn.Module):
 
         self.layers_2.append(nn.Linear(deep_input_dims_2, 1))
 
-        weight_init(self.layers_1)
-        weight_init(self.layers_2)
+        # weight_init(self.layers_1)
+        # weight_init(self.layers_2)
 
         self.mlp_1 = nn.Sequential(*self.layers_1)
         self.mlp_2 = nn.Sequential(*self.layers_2)
@@ -198,7 +198,7 @@ class Hybrid_Actor(nn.Module):
 
         deep_input_dims = self.input_dims
 
-        neuron_nums = [128,64]
+        neuron_nums = [32, 64,16]
         self.layers = list()
         for neuron_num in neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
@@ -216,7 +216,7 @@ class Hybrid_Actor(nn.Module):
         self.d_layers.append(nn.Linear(deep_input_dims, self.action_dims))
         # self.d_layers.append(nn.BatchNorm1d(self.action_dims))
 
-        weight_init(self.layers)
+        # weight_init(self.layers)
         weight_init(self.c_layers)
         weight_init(self.d_layers)
 
@@ -225,6 +225,7 @@ class Hybrid_Actor(nn.Module):
         self.d_action_layer = nn.Sequential(*self.d_layers)
 
     def act(self, input, temprature):
+
         obs = self.bn_input(input)
         # obs = input
         feature_exact = self.mlp(obs)
@@ -298,7 +299,7 @@ class Hybrid_TD3_Model():
             reward_decay=1.0,
             memory_size=4096000,
             batch_size=256,
-            tau=0.005,  # for target network soft update
+            tau=0.0005,  # for target network soft update
             random_seed=1,
             device='cuda:0',
     ):
@@ -335,7 +336,7 @@ class Hybrid_TD3_Model():
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.learn_iter = 0
-        self.policy_freq = 10
+        self.policy_freq = 3
 
         self.temprature = 2.0
         self.temprature_max = 2.0
@@ -444,9 +445,9 @@ class Hybrid_TD3_Model():
         self.learn_iter += 1
 
         self.Hybrid_Actor.train()
-        self.Hybrid_Actor_.eval()
+        self.Hybrid_Actor_.train()
         self.Hybrid_Critic.train()
-        self.Hybrid_Critic_.eval()
+        self.Hybrid_Critic_.train()
 
         # sample
         choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
@@ -492,7 +493,7 @@ class Hybrid_TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=5, norm_type=2)
+        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=40, norm_type=2)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -525,7 +526,7 @@ class Hybrid_TD3_Model():
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=5, norm_type=2)
+            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=40, norm_type=2)
             self.optimizer_a.step()
 
             # for name, parms in self.Hybrid_Actor.d_action_layer.named_parameters():
