@@ -130,17 +130,17 @@ def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_
     if bid_price >= mprice:
         if clk:
             # print('1', win_clk_rate / win_no_clk_rate)
-            return win_clk_rate / win_no_clk_rate
+            return (ecpc * ctr - mprice) * (win_clk_rate / win_no_clk_rate)
         else:
             # print('2', - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10)
-            return - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10
+            return - mprice / remain_budget_on_hour_rate if remain_budget_on_hour_rate else mprice
     else:
         if clk:
             # print('3', - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10)
-            return - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10
+            return - (ecpc * ctr - mprice) * (1 - win_clk_rate)
         else:
             # print('4', (1 - win_no_clk_rate) * remain_budget_on_hour_rate)
-            return (1 - win_no_clk_rate) * remain_budget_on_hour_rate
+            return mprice / win_no_clk_rate if win_no_clk_rate else 10
 
 '''
 1458
@@ -166,7 +166,7 @@ def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_
 '''
 
 if __name__ == '__main__':
-    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc\

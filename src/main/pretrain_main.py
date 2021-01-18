@@ -220,10 +220,10 @@ def get_dataset(args):
     train_data_file_name = 'train.ctr.' + args.sample_type + '.txt'
     train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
 
-    val_data_file_name = 'val.ctr.all.txt'
+    val_data_file_name = 'val.ctr.' + args.sample_type + '.txt'
     val_fm = pd.read_csv(data_path + val_data_file_name, header=None).values.astype(int)
     
-    test_data_file_name = 'test.ctr.all.txt'
+    test_data_file_name = 'test.ctr.' + args.sample_type + '.txt'
     test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
 
     field_nums = train_fm.shape[1] - 1  # 特征域的数量

@@ -24,8 +24,8 @@ def init_parser(campaign_id):
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi, avazu')
     parser.add_argument('--campaign_id', default='1458/', help='1458, 3358, 3386, 3427, 3476, avazu')
     parser.add_argument('--ctr_model_name', default='LR', help='LR,FM,FNN...')
-    parser.add_argument('--episodes', type=int, default=100)
-    parser.add_argument('--model_name', default='RLIB')
+    parser.add_argument('--episodes', type=int, default=1000)
+    parser.add_argument('--model_name', default='FAB')
     parser.add_argument('--lr', type=float, default=1e-2)
     parser.add_argument('--memory_size', type=float, default=5e5)
     parser.add_argument('--rl_batch_size', type=int, default=32)
@@ -61,6 +61,5 @@ def init_parser(campaign_id):
     args.campaign_id = campaign_id
 
     return args
-
 
 

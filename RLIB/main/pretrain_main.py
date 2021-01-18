@@ -222,7 +222,7 @@ class ctrThread(threading.Thread):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '1458/' # 1458, 3358, 3386, 3427, avazu
+    campaign_id = '3427/' # 1458, 3358, 3386, 3427, avazu
     args = config.init_parser(campaign_id)
 
     train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)

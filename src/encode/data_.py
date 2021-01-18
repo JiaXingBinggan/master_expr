@@ -317,7 +317,7 @@ def to_libsvm_encode(datapath, sample_type):
     # indexing val
     print('indexing ' + datapath + 'val.ctr.all.csv')
     fi = open(datapath + 'val.ctr.all.csv', 'r')
-    fo = open(datapath + 'val.ctr.all.txt', 'w')
+    fo = open(datapath + 'val.ctr.' + sample_type + '.txt', 'w')
 
     first = True
     for line in fi:
@@ -360,7 +360,7 @@ def to_libsvm_encode(datapath, sample_type):
     # indexing test
     print('indexing ' + datapath + 'test.ctr.all.csv')
     fi = open(datapath + 'test.ctr.all.csv', 'r')
-    fo = open(datapath + 'test.ctr.all.txt', 'w')
+    fo = open(datapath + 'test.ctr.' + sample_type + '.txt', 'w')
 
     first = True
     for line in fi:
@@ -461,7 +461,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='1458/', help='1458, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)

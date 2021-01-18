@@ -126,21 +126,22 @@ def get_next_batch(batch):
 
 
 def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate):
-    # print(50000 * ctr, mprice)
     if bid_price >= mprice:
         if clk:
             # print('1', win_clk_rate / win_no_clk_rate)
-            return win_clk_rate / win_no_clk_rate
+            r =  (ecpc * ctr - mprice) * (win_clk_rate / win_no_clk_rate)
         else:
             # print('2', - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10)
-            return - win_no_clk_rate / remain_budget_on_hour_rate if remain_budget_on_hour_rate else 10
+            r =  - mprice / remain_budget_on_hour_rate if remain_budget_on_hour_rate else mprice
     else:
         if clk:
             # print('3', - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10)
-            return - (1 - win_clk_rate) * win_no_clk_rate if win_no_clk_rate else 10
+            r = - (ecpc * ctr - mprice) * (1 - win_clk_rate)
         else:
             # print('4', (1 - win_no_clk_rate) * remain_budget_on_hour_rate)
-            return (1 - win_no_clk_rate) * remain_budget_on_hour_rate
+            r = mprice / win_no_clk_rate if win_no_clk_rate else 10
+
+    return r / 1000
 
 
 '''

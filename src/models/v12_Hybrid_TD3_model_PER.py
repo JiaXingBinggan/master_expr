@@ -299,7 +299,7 @@ class Hybrid_TD3_Model():
             reward_decay=1.0,
             memory_size=4096000,
             batch_size=256,
-            tau=0.005,  # for target network soft update
+            tau=0.0005,  # for target network soft update
             random_seed=1,
             device='cuda:0',
     ):
@@ -336,7 +336,7 @@ class Hybrid_TD3_Model():
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.learn_iter = 0
-        self.policy_freq = 10
+        self.policy_freq = 3
 
         self.temprature = 2.0
         self.temprature_max = 2.0
@@ -493,7 +493,7 @@ class Hybrid_TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=10, norm_type=2)
+        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=40, norm_type=2)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -526,7 +526,7 @@ class Hybrid_TD3_Model():
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=10, norm_type=2)
+            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=40, norm_type=2)
             self.optimizer_a.step()
 
             # for name, parms in self.Hybrid_Actor.d_action_layer.named_parameters():

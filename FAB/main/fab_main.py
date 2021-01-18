@@ -4,10 +4,7 @@ import tqdm
 import datetime
 import os
 import random
-import RLIB.models.RL_bain_fab as td3
-import RLIB.models.create_data as Data
-import RLIB.models.p_model as Model
-from RLIB.models.Feature_embedding import Feature_Embedding
+import FAB.models.RL_brain_fab as td3
 
 import sklearn.preprocessing as pre
 
@@ -18,7 +15,7 @@ import torch.nn as nn
 import torch.utils.data
 
 from itertools import islice
-from RLIB.config import config
+from FAB.config import config
 import logging
 import sys
 
@@ -32,8 +29,10 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
 
+
 def bidding(bid):
     return int(bid if bid <= 300 else 300)
+
 
 def generate_bid_price(datas):
     '''
@@ -143,6 +142,7 @@ def get_dataset(args):
     print(origin_ctr)
     return train_data, test_data, ecpc, origin_ctr, avg_mprice
 
+
 def reward_func(fab_clks, hb_clks, fab_cost, hb_cost):
     if fab_clks >= hb_clks and fab_cost < hb_cost:
         r = 5
@@ -154,6 +154,7 @@ def reward_func(fab_clks, hb_clks, fab_cost, hb_cost):
         r = -2.5
 
     return r / 1000
+
 
 '''
 1458
@@ -179,17 +180,22 @@ def reward_func(fab_clks, hb_clks, fab_cost, hb_cost):
 '''
 
 if __name__ == '__main__':
-    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)
 
-    args.model_name= 'FAB'
-
     setup_seed(args.seed)
 
-    # 设置随机数种子
-    setup_seed(args.seed)
+    log_dirs = [args.save_log_dir, args.save_log_dir + args.campaign_id]
+    for log_dir in log_dirs:
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
+
+    param_dirs = [args.save_param_dir, args.save_param_dir + args.campaign_id]
+    for param_dir in param_dirs:
+        if not os.path.exists(param_dir):
+            os.mkdir(param_dir)
 
     logging.basicConfig(level=logging.DEBUG,
                         filename=args.save_log_dir + str(args.campaign_id).strip('/') + args.model_name + '_output.log',
@@ -203,12 +209,10 @@ if __name__ == '__main__':
     stream_handler.setLevel(logging.INFO)
     logger.addHandler(stream_handler)
 
-    if not os.path.exists(args.save_param_dir + args.campaign_id):
-        os.mkdir(args.save_param_dir + args.campaign_id)
-
     submission_path = args.data_path + args.dataset_name + args.campaign_id + args.model_name + '/'  # ctr 预测结果存放文件夹位置
     if not os.path.exists(submission_path):
         os.mkdir(submission_path)
+
 
     device = torch.device(args.device)  # 指定运行设备
 
@@ -221,19 +225,16 @@ if __name__ == '__main__':
     B = args.budget * args.budget_para[0]
     print(B)
 
-    hb_clk_dict = {}
-    for para in actions:
-        bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
-        res_ = bid_main(bid_datas, train_data, B)
-        hb_clk_dict.setdefault(para, res_[0])
+    # hb_clk_dict = {}
+    # for para in actions:
+    #     bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
+    #     res_ = bid_main(bid_datas, train_data, B)
+    #     hb_clk_dict.setdefault(para, res_[0])
+    #
+    # hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
+    # print(hb_base)
+    hb_base = 65
 
-    hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
-    print(hb_base)
-    # hb_base = 60
-    hour_data = test_data[test_data[:, 3] == 0]
-    bid_datas = generate_bid_price(hour_data[:, 1] * hb_base / origin_ctr)
-    res_ = bid_main(bid_datas, hour_data, B)
-    print(res_)
     train_losses = []
 
     logger.info('para:{}, budget:{}, base bid: {}'.format(args.budget_para[0], B, hb_base))
@@ -243,6 +244,8 @@ if __name__ == '__main__':
 
     clk_index, ctr_index, mprice_index, hour_index = 0, 1, 2, 3
 
+    ep_train_records = []
+    ep_test_records = []
     for ep in range(args.episodes):
         budget = B
 
@@ -292,7 +295,8 @@ if __name__ == '__main__':
 
                 transitions = torch.cat([state, torch.tensor([action]).float(),
                                          torch.tensor(next_state).float(),
-                                         torch.tensor([done]).float(), torch.tensor([r_t]).float()], dim=-1).unsqueeze(0).to(device)
+                                         torch.tensor([done]).float(), torch.tensor([r_t]).float()], dim=-1).unsqueeze(
+                    0).to(device)
 
                 rl_model.store_transition(transitions)
 
@@ -302,6 +306,7 @@ if __name__ == '__main__':
         # print('train', records, critic_loss)
 
         if ep % 10 == 0:
+            ep_train_records.append([ep] + records + [critic_loss])
             test_records = [0, 0, 0, 0, 0]
             tmp_test_state = [1, 0, 0, 0]
             init_test_state = [1, 0, 0, 0]
@@ -339,9 +344,13 @@ if __name__ == '__main__':
                     tmp_test_state = next_state
 
                     hour_t += 1
-
+            ep_test_records.append([ep] + test_records + [test_rewards / hour_t])
             print(ep, 'test', test_records, test_rewards / hour_t)
 
+    train_record_df = pd.DataFrame(data=ep_train_records,
+                                   columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
+    train_record_df.to_csv(submission_path + 'fab_train_cords' + str(args.budget_para[0]) + '.csv', index=None)
 
-
-
+    test_record_df = pd.DataFrame(data=ep_test_records,
+                                  columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
+    test_record_df.to_csv(submission_path + 'fab_test_records' + str(args.budget_para[0]) + '.csv', index=None)

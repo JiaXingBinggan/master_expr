@@ -59,7 +59,7 @@ def init_parser(campaign_id):
     parser.add_argument('--sample_type', default='all', help='all, down, rand')
 
     # for ensemble
-    parser.add_argument('--ensemble_nums', type=int, default=3, help='3,5,7')
+    parser.add_argument('--ensemble_nums', type=int, default=7, help='3,5,7')
     parser.add_argument('--ensemble_models', default='LR,FM,FNN,IPNN,DCN')
 
     # for RL training
@@ -78,8 +78,8 @@ def init_parser(campaign_id):
     parser.add_argument('--memory_size', type=int, default=500000) # 感觉需要再调调
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
-    parser.add_argument('--run_steps', type=float, default=1e6)
-    parser.add_argument('--stop_steps', type=float, default=2e6)
+    parser.add_argument('--run_steps', type=float, default=5e5)
+    parser.add_argument('--stop_steps', type=float, default=6e6)
     parser.add_argument('--record_times', type=int, default=200)
     parser.add_argument('--rl_early_stop_iter', type=int, default=10)
 

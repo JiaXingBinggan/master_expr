@@ -120,7 +120,7 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
             current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * 0
+            current_basic_rewards[current_with_clk_indexs] * -1
         )
 
         # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
@@ -130,7 +130,7 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
             current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * 0
+            current_basic_rewards[current_without_clk_indexs] * -1
         )
         # without_clk_rewards = current_pretrain_y_preds[
         #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
@@ -275,6 +275,11 @@ if __name__ == '__main__':
 
     # 设置随机数种子
     setup_seed(args.seed)
+
+    log_dirs = [args.save_log_dir, args.save_log_dir + args.campaign_id]
+    for log_dir in log_dirs:
+        if not os.path.exists(log_dir):
+            os.mkdir(log_dir)
 
     logging.basicConfig(level=logging.DEBUG,
                         filename=args.save_log_dir + str(args.campaign_id).strip('/') + args.rl_model_name + '_output.log',
