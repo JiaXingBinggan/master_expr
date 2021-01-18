@@ -65,7 +65,7 @@ def get_dataset(args):
     # clk,ctr,mprice,hour,time_frac
     columns = ['clk', 'ctr', 'mprice', 'hour', 'time_frac']
     train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.data')[columns]
-    test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.data')[columns]
+    test_data = pd.read_csv(data_path + 'test.bid.all.data')[columns]
 
     train_ctr_price = train_data[['mprice', 'ctr']].values.astype(float)
     ascend_train_pctr_price = train_ctr_price[(-train_ctr_price[:, 1]).argsort()]
@@ -167,7 +167,7 @@ def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_
 '''
 
 if __name__ == '__main__':
-    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc \
@@ -214,7 +214,7 @@ if __name__ == '__main__':
     expect_auc_num = len(train_data)
     logger.info('para:{}, budget:{}'.format(args.budget_para[0], B))
     logger.info('\tclks\treal_clks\tbids\timps\tcost')
-    done = 0
+    done = 0.0
     epsilon_max, epsilon_min = 0.9, 0.1
 
     for ep in range(args.episodes):
@@ -264,7 +264,7 @@ if __name__ == '__main__':
                 r_t = reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate)
 
                 if t + 1 == len(train_data) or budget <= 0:
-                    done = 1
+                    done = 1.0
                     s_t_ = torch.Tensor(
                         [budget / B, 0, win_clk_rate, win_no_clk_rate])
                 else:
@@ -279,8 +279,8 @@ if __name__ == '__main__':
                                          next_win_clk_rate,
                                          next_win_no_clk_rate])
 
-                transitions = torch.cat([s_t, torch.tensor([action]), s_t_,
-                                         torch.tensor([done]), torch.tensor([r_t])], dim=-1).unsqueeze(0).to(device)
+                transitions = torch.cat([s_t, torch.tensor([action]).float(), s_t_,
+                                         torch.tensor([done]).float(), torch.tensor([r_t]).float()], dim=-1).unsqueeze(0).to(device)
                 rl_model.store_transition(transitions)
 
                 if rl_model.memory.memory_counter >= args.rl_batch_size:

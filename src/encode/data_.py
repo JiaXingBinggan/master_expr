@@ -24,7 +24,7 @@ def data_to_csv(datapath, is_to_csv):
     if is_to_csv:
         print('###### to csv.file ######\n')
         # 训练数据27个特征
-        with open(data_path + 'train.all.csv', 'w', newline='') as csvfile: # newline防止每两行就空一行
+        with open(data_path + 'train.all.origin.csv', 'w', newline='') as csvfile: # newline防止每两行就空一行
             spamwriter = csv.writer(csvfile, dialect='excel') # 读要转换的txt文件，文件每行各词间以@@@字符分隔
             with open(data_path + file_name, 'r') as filein:
                 for i, line in enumerate(filein):
@@ -37,7 +37,7 @@ def data_to_csv(datapath, is_to_csv):
     if is_to_csv:
         print('###### to csv.file ######\n')
         # 训练数据27个特征
-        with open(data_path + 'test.all.csv', 'w', newline='') as csvfile:  # newline防止每两行就空一行
+        with open(data_path + 'test.ctr.all.csv', 'w', newline='') as csvfile:  # newline防止每两行就空一行
             spamwriter = csv.writer(csvfile, dialect='excel')  # 读要转换的txt文件，文件每行各词间以@@@字符分隔
             with open(data_path + file_name, 'r') as filein:
                 for i, line in enumerate(filein):
@@ -45,22 +45,30 @@ def data_to_csv(datapath, is_to_csv):
                     spamwriter.writerow(line_list)
         print('test-data读写完毕')
 
-def separate_day_data(datapath, is_separate_data):
-    file_name = 'train.all.csv'
+    file_name = 'train.all.origin.csv'
     data_path = datapath + file_name
-    if is_separate_data:
-        day_to_weekday = {4: '6', 5: '7', 6: '8', 0: '9', 1: '10', 2: '11', 3: '12'}
-        train_data = pd.read_csv(data_path, header=None).drop([0])
-        train_data.iloc[:, 1] = train_data.iloc[:, 1].astype(int)
-        print('###### separate datas from train day ######\n')
-        day_data_indexs = []
-        for key in day_to_weekday.keys():
-            day_datas = train_data[train_data.iloc[:, 1] == key]
-            day_indexs = day_datas.index
-            day_data_indexs.append([int(day_to_weekday[key]), day_indexs[0] - 1, day_indexs[-1] - 1])
 
-        day_data_indexs_df = pd.DataFrame(data=day_data_indexs)
-        day_data_indexs_df.to_csv(datapath + 'day_indexs.csv', index=None, header=None)
+    day_to_weekday = {4: '6', 5: '7', 6: '8', 0: '9', 1: '10', 2: '11', 3: '12'}
+    train_data = pd.read_csv(data_path)
+    train_data.iloc[:, 1] = train_data.iloc[:, 1].astype(int)
+    print('###### separate datas from train day ######\n')
+    day_data_indexs = []
+    for key in day_to_weekday.keys():
+        day_datas = train_data[train_data.iloc[:, 1] == key]
+        day_indexs = day_datas.index
+        day_data_indexs.append([int(day_to_weekday[key]), int(day_indexs[0]), int(day_indexs[-1])])
+
+    day_data_indexs_df = pd.DataFrame(data=day_data_indexs)
+    day_data_indexs_df.to_csv(datapath + 'day_indexs.csv', index=None, header=None)
+
+    day_indexs = np.array(day_data_indexs)
+    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
+
+    train_fm = train_data.iloc[:train_indexs[1], :]
+    val_fm = train_data.iloc[train_indexs[1]:, :]
+
+    train_fm.to_csv(datapath + 'train.ctr.all.csv', index=None)
+    val_fm.to_csv(datapath + 'val.ctr.all.csv', index=None)
 
 # def to_libsvm_encode(datapath, sample_type):
 #     train_path = datapath + 'train.' + sample_type + '.csv'
@@ -209,14 +217,14 @@ def to_libsvm_encode(datapath, sample_type):
     def getTags(content):
         if content == '\n' or len(content) == 0:
             return ["null"]
-        return content.strip().split(',')[:3]
+        return content.strip().split(',')[:5]
 
     # initialize
     namecol = {}
     featindex = {}
     maxindex = 0
 
-    fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
+    fi = open(datapath + 'train.ctr.' + sample_type + '.csv', 'r')
 
     first = True
 
@@ -247,13 +255,13 @@ def to_libsvm_encode(datapath, sample_type):
             if feat not in featindex:
                 featindex[feat] = maxindex
                 maxindex += 1
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            featindex[feat] = maxindex
-            maxindex += 1
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:tian
+        #     featindex[feat] = maxindex
+        #     maxindex += 1
 
     print('feature size: ' + str(maxindex))
     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
@@ -265,8 +273,8 @@ def to_libsvm_encode(datapath, sample_type):
     fo.close()
 
     # indexing train
-    print('indexing ' + datapath + 'train.' + sample_type + '.csv')
-    fi = open(datapath + 'train.' + sample_type + '.csv', 'r')
+    print('indexing ' + datapath + 'train.ctr.' + sample_type + '.csv')
+    fi = open(datapath + 'train.ctr.' + sample_type + '.csv', 'r')
     fo = open(datapath + 'train.ctr.' + sample_type + '.txt', 'w')
 
     first = True
@@ -275,7 +283,8 @@ def to_libsvm_encode(datapath, sample_type):
             first = False
             continue
         s = line.split(',')
-        fo.write(s[0])  # click + winning price
+
+        fo.write(s[0])  # click
         index = featindex['truncate']
         fo.write(',' + str(index))
         for f in f1s:  # every direct first order feature
@@ -294,22 +303,21 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 
-    # indexing test
-    print('indexing ' + datapath + 'test.all.csv')
-
-    fi = open(datapath + 'test.all.csv', 'r')
-    fo = open(datapath + 'test.ctr.' + sample_type + '.txt', 'w')
+    # indexing val
+    print('indexing ' + datapath + 'val.ctr.all.csv')
+    fi = open(datapath + 'val.ctr.all.csv', 'r')
+    fo = open(datapath + 'val.ctr.all.txt', 'w')
 
     first = True
     for line in fi:
@@ -317,7 +325,7 @@ def to_libsvm_encode(datapath, sample_type):
             first = False
             continue
         s = line.split(',')
-        fo.write(s[0])  # click + winning price
+        fo.write(s[0])  # click + winning price + hour + timestamp
         index = featindex['truncate']
         fo.write(',' + str(index))
         for f in f1s:  # every direct first order feature
@@ -339,14 +347,57 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
+        fo.write('\n')
+
+    # indexing test
+    print('indexing ' + datapath + 'test.ctr.all.csv')
+    fi = open(datapath + 'test.ctr.all.csv', 'r')
+    fo = open(datapath + 'test.ctr.all.txt', 'w')
+
+    first = True
+    for line in fi:
+        if first:
+            first = False
+            continue
+        s = line.split(',')
+        fo.write(s[0])  # click + winning price + hour + timestamp
+        index = featindex['truncate']
         fo.write(',' + str(index))
+        for f in f1s:  # every direct first order feature
+            col = namecol[f]
+            if col >= len(s):
+                print('col: ' + str(col))
+                print(line)
+            content = s[col]
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        for f in f1sp:
+            col = namecol[f]
+            content = featTrans(f, s[col])
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 
@@ -354,7 +405,7 @@ def down_sample(data_path):
     # 负采样后达到的点击率
     CLICK_RATE = 0.001188  # 1:1000
 
-    train_data = pd.read_csv(data_path + 'train.all.csv').values
+    train_data = pd.read_csv(data_path + 'train.ctr.all.csv').values
     train_auc_num = len(train_data)
 
     click = np.sum(train_data[:, 0])
@@ -368,8 +419,8 @@ def down_sample(data_path):
     # test_sample_rate = test_sample_rate
 
     # 获取测试样本
-    with open(data_path + 'train.down.csv', 'w') as fo:
-        fi = open(data_path + 'train.all.csv')
+    with open(data_path + 'train.ctr.down.csv', 'w') as fo:
+        fi = open(data_path + 'train.ctr.all.csv')
         p = 0  # 原始正样本
         n = 0  # 原始负样本
         nn = 0  # 剩余的负样本
@@ -397,22 +448,21 @@ def down_sample(data_path):
 
 
 def rand_sample(data_path):
-    train_data = pd.read_csv(data_path + 'train.all.csv')
-    train_down_data = pd.read_csv(data_path + 'train.down.csv')
+    train_data = pd.read_csv(data_path + 'train.ctr.all.csv')
+    train_down_data = pd.read_csv(data_path + 'train.ctr.down.csv')
 
     sample_indexs = random.sample(range(len(train_data)), len(train_down_data))
 
     train_all_sample_data = train_data.iloc[sample_indexs, :]
 
-    train_all_sample_data.to_csv(data_path + 'train.rand.csv', index=None)
+    train_all_sample_data.to_csv(data_path + 'train.ctr.rand.csv', index=None)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3476/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
-    parser.add_argument('--is_separate_data', default=True)
 
     setup_seed(1)
 
@@ -421,9 +471,6 @@ if __name__ == '__main__':
 
     if args.is_to_csv:
         data_to_csv(data_path, args.is_to_csv)
-
-    if args.is_separate_data:
-        separate_day_data(data_path, args.is_separate_data)
 
     to_libsvm_encode(data_path, 'all')
 

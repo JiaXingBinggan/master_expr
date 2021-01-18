@@ -45,19 +45,20 @@ def generate_preds(pretrain_y_preds, ensemble_c_actions,
 
     with_clk_indexs = (labels == 1).nonzero()[:, 0]
     without_clk_indexs = (labels == 0).nonzero()[:, 0]
+    print(with_clk_indexs)
 
     basic_rewards = torch.ones_like(labels).float()
 
     with_clk_rewards = torch.where(
         model_y_preds[with_clk_indexs] > pretrain_y_pred_means[with_clk_indexs],
-        basic_rewards[with_clk_indexs] * 1,
-        basic_rewards[with_clk_indexs] * 0
+        basic_rewards[with_clk_indexs] * 10,
+        basic_rewards[with_clk_indexs] * -1
     )
 
     without_clk_rewards = torch.where(
         model_y_preds[without_clk_indexs] < pretrain_y_pred_means[without_clk_indexs],
         basic_rewards[without_clk_indexs] * 1,
-        basic_rewards[without_clk_indexs] * 0
+        basic_rewards[without_clk_indexs] * -1
     )
 
     basic_rewards[with_clk_indexs] = with_clk_rewards
@@ -275,7 +276,7 @@ if __name__ == '__main__':
         rl_model.store_transition(transitions)
 
         if intime_steps >= args.rl_batch_size:
-            if intime_steps % 2000 == 0:
+            if intime_steps % gap == 0:
             # rl_model.memory.beta = min(rl_model.memory.beta_max,
             #                           intime_steps *
             #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))

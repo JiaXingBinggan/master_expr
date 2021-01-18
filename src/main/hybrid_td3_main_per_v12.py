@@ -307,7 +307,7 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    gap = 5000
+    gap = 10000
 
     data_len = len(train_data)
 
@@ -346,16 +346,16 @@ if __name__ == '__main__':
     intime_steps = 0
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
-    train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
-    # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
-    # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_batch_size, num_workers=8, shuffle=1)
-    while intime_steps <= args.stop_steps:
-        batchs = train_batch_gen.__next__()
-        labels = torch.Tensor(batchs[:, 0: 1]).long().to(device)
-        current_pretrain_y_preds = torch.Tensor(batchs[:, 1:]).float().to(device)
-    # for i, (pretrain_y_preds, labels) in enumerate(train_data_loader):
-    #     intime_steps = (i + 1) * args.rl_iter_size
-    #     current_pretrain_y_preds, labels = pretrain_y_preds.float().to(device), labels.long().unsqueeze(1).to(device)
+    # train_batch_gen = get_list_data(train_data, args.rl_iter_size, False)# 要不要早停
+    train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
+    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_iter_size, num_workers=8, shuffle=1)
+    # while intime_steps <= args.stop_steps:
+    #     batchs = train_batch_gen.__next__()
+    #     labels = torch.Tensor(batchs[:, 0: 1]).long().to(device)
+    #     current_pretrain_y_preds = torch.Tensor(batchs[:, 1:]).float().to(device)
+    for i, (pretrain_y_preds, labels) in enumerate(train_data_loader):
+        intime_steps = i * args.rl_iter_size
+        current_pretrain_y_preds, labels = pretrain_y_preds.float().to(device), labels.long().unsqueeze(1).to(device)
 
         s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
@@ -375,18 +375,12 @@ if __name__ == '__main__':
         rl_model.store_transition(transitions)
 
         if intime_steps >= args.rl_batch_size:
-            if intime_steps % gap == 0:
-            # rl_model.memory.beta = min(rl_model.memory.beta_max,
-            #                           intime_steps *
-            #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
+            # if intime_steps % gap == 0:
 
-                for _ in range(args.rl_train_iters):
-                    critic_loss = rl_model.learn()
+            for _ in range(1):
+                critic_loss = rl_model.learn()
 
-                    # rl_model.memory.beta = min(rl_model.memory.beta_max,
-                    #                           intime_steps *
-                    #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
-                    tmp_train_ctritics = critic_loss
+                tmp_train_ctritics = critic_loss
 
         if intime_steps % gap == 0:
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
@@ -400,7 +394,7 @@ if __name__ == '__main__':
 
             rl_model.temprature = max(rl_model.temprature_min,
                                        rl_model.temprature_max - intime_steps *
-                                       (rl_model.temprature_max - rl_model.temprature_min) / (args.run_steps * 0.8))
+                                       (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
 
             early_aucs.append([record_param_steps, auc])
             early_rewards.append([record_param_steps, test_rewards])
@@ -418,7 +412,7 @@ if __name__ == '__main__':
 
             torch.cuda.empty_cache()
 
-        intime_steps += batchs.shape[0]
+        # intime_steps += batchs.shape[0]
 
     logger.info('Final gumbel Softmax temprature is {}'.format(rl_model.temprature))
 

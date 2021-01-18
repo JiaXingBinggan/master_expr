@@ -284,7 +284,7 @@ class DQN():
         b_a = batch_memory[:, self.input_dims: self.input_dims + 1].long()
         b_s_ = batch_memory[:,
                 self.input_dims + 1: self.input_dims * 2 + 1]
-        b_done = batch_memory[:, -2].unsqueeze(1).long()
+        b_done = batch_memory[:, -2].unsqueeze(1)
         b_r = batch_memory[:, -1].unsqueeze(1)
 
         q_eval = self.agent.evaluate(b_s).gather(1, b_a)  # shape (batch,1), gather函数将对应action的Q值提取出来做Bellman公式迭代

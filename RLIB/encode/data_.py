@@ -69,7 +69,7 @@ def to_libsvm_encode(datapath, sample_type, time_frac_dict):
     featindex = {}
     maxindex = 0
 
-    fi = open(datapath + 'train.bid.' + sample_type + '.csv', 'r')
+    fi = open(datapath + 'train.bid.all.csv', 'r')
 
     first = True
 
@@ -104,25 +104,23 @@ def to_libsvm_encode(datapath, sample_type, time_frac_dict):
         # tags = getTags(s[col])
         # # for tag in tags:
         # feat = str(col) + ':' + ''.join(tags)
-        # if feat not in featindex:
+        # if feat not in featindex:tian
         #     featindex[feat] = maxindex
         #     maxindex += 1
 
     print('feature size: ' + str(maxindex))
     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
-    if not sample_type:
-        fo = open(datapath + 'feat.bid.txt', 'w')
-    else:
-        fo = open(datapath + 'feat.bid.' + sample_type + '.txt', 'w')
+
+    fo = open(datapath + 'feat.bid.all.txt', 'w')
     fo.write(str(maxindex) + '\n')
     for fv in featvalue:
         fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
     fo.close()
 
     # indexing train
-    print('indexing ' + datapath + 'train.bid.' + sample_type + '.csv')
-    fi = open(datapath + 'train.bid.' + sample_type + '.csv', 'r')
-    fo = open(datapath + 'train.bid.' + sample_type + '.txt', 'w')
+    print('indexing ' + datapath + 'train.bid.all.csv')
+    fi = open(datapath + 'train.bid.all.csv', 'r')
+    fo = open(datapath + 'train.bid.all.txt', 'w')
 
     first = True
     for line in fi:
@@ -161,10 +159,55 @@ def to_libsvm_encode(datapath, sample_type, time_frac_dict):
         fo.write('\n')
     fo.close()
 
+    # indexing val
+    print('indexing ' + datapath + 'val.bid.' + sample_type + '.csv')
+    fi = open(datapath + 'val.bid.' + sample_type + '.csv', 'r')
+    fo = open(datapath + 'val.bid.' + sample_type + '.txt', 'w')
+
+    first = True
+    for line in fi:
+        if first:
+            first = False
+            continue
+        s = line.split(',')
+        time_frac = s[4][8: 12]
+        fo.write(s[0] + ',' + s[23] + ',' + s[2] + ',' + to_time_frac(int(time_frac[0:2]), int(time_frac[2:4]),
+                                                                      time_frac_dict))  # click + winning price + hour + timestamp
+        index = featindex['truncate']
+        fo.write(',' + str(index))
+        for f in f1s:  # every direct first order feature
+            col = namecol[f]
+            if col >= len(s):
+                print('col: ' + str(col))
+                print(line)
+            content = s[col]
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        for f in f1sp:
+            col = namecol[f]
+            content = featTrans(f, s[col])
+            feat = str(col) + ':' + content
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
+        fo.write('\n')
+
     # indexing test
     print('indexing ' + datapath + 'test.bid.all.csv')
     fi = open(datapath + 'test.bid.all.csv', 'r')
-    fo = open(datapath + 'test.bid.' + sample_type + '.txt', 'w')
+    fo = open(datapath + 'test.bid.all.txt', 'w')
 
     first = True
     for line in fi:
@@ -337,8 +380,8 @@ def down_sample(data_path):
     # test_sample_rate = test_sample_rate
 
     # 获取测试样本
-    with open(data_path + 'train.bid.down.csv', 'w') as fo:
-        fi = open(data_path + 'train.bid.all.csv')
+    with open(data_path + 'val.bid.down.csv', 'w') as fo:
+        fi = open(data_path + 'val.bid.all.csv')
         p = 0  # 原始正样本
         n = 0  # 原始负样本
         nn = 0  # 剩余的负样本
@@ -366,20 +409,20 @@ def down_sample(data_path):
 
 
 def rand_sample(data_path):
-    train_data = pd.read_csv(data_path + 'train.bid.all.csv')
-    train_down_data = pd.read_csv(data_path + 'train.bid.down.csv')
+    train_data = pd.read_csv(data_path + 'val.bid.all.csv')
+    train_down_data = pd.read_csv(data_path + 'val.bid.down.csv')
 
     sample_indexs = random.sample(range(len(train_data)), len(train_down_data))
 
     train_all_sample_data = train_data.iloc[sample_indexs, :]
 
-    train_all_sample_data.to_csv(data_path + 'train.bid.rand.csv', index=None)
+    train_all_sample_data.to_csv(data_path + 'val.bid.rand.csv', index=None)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='3358/', help='1458, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)
@@ -403,12 +446,14 @@ if __name__ == '__main__':
         train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
         test_indexs = day_indexs[day_indexs[:, 0] == 12][0]
 
-        origin_train_data = pd.read_csv(data_path + 'train.all.csv')
+        origin_train_data = pd.read_csv(data_path + 'train.all.origin.csv')
 
-        train_data = origin_train_data.iloc[:train_indexs[2] + 1, :] # 6-11
-        test_data = origin_train_data.iloc[test_indexs[1]: test_indexs[2] + 1, :] # 12
+        train_data = origin_train_data.iloc[:train_indexs[1], :] # 6-10
+        val_data = origin_train_data.iloc[train_indexs[1]: train_indexs[2], :] # 11
+        test_data = origin_train_data.iloc[train_indexs[2]:, :] # 12
 
         train_data.to_csv(data_path + 'train.bid.all.csv', index=None)
+        val_data.to_csv(data_path + 'val.bid.all.csv', index=None)
         test_data.to_csv(data_path + 'test.bid.all.csv', index=None)
 
     # no sample

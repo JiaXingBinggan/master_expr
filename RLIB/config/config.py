@@ -28,7 +28,7 @@ def init_parser(campaign_id):
     parser.add_argument('--model_name', default='RLIB')
     parser.add_argument('--lr', type=float, default=1e-2)
     parser.add_argument('--memory_size', type=float, default=5e5)
-    parser.add_argument('--rl_batch_size', type=int, default=128)
+    parser.add_argument('--rl_batch_size', type=int, default=256)
     parser.add_argument('--rl_early_stop_iter', type=int, default=20)
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--save_param_dir', default='../models/model_params/')

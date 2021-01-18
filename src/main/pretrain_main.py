@@ -76,6 +76,7 @@ def train(model, optimizer, data_loader, loss, device):
     for i, (features, labels) in enumerate(data_loader):
         features, labels = features.long().to(device), torch.unsqueeze(labels, 1).to(device)
         y = model(features)
+
         train_loss = loss(y, labels.float())
 
         model.zero_grad()
@@ -96,6 +97,7 @@ def test(model, data_loader, loss, device):
     with torch.no_grad():
         for features, labels in data_loader:
             features, labels = features.long().to(device), torch.unsqueeze(labels, 1).to(device)
+
             y = model(features)
 
             test_loss = loss(y, labels.float())
@@ -120,7 +122,7 @@ def submission(model, data_loader, device):
 
     return predicts, roc_auc_score(targets, predicts)
 
-def main(model, model_name, train_data_loader, val_data_loader, test_data_loader, optimizer, loss, device, args):
+def main(model, model_name, all_train_data_loader, train_data_loader, val_data_loader, test_data_loader, optimizer, loss, device, args):
     valid_aucs = []
     valid_losses = []
     early_stop_index = 0
@@ -136,7 +138,7 @@ def main(model, model_name, train_data_loader, val_data_loader, test_data_loader
         train_average_loss = train(model, optimizer, train_data_loader, loss, device)
 
         torch.save(model.state_dict(), args.save_param_dir + args.campaign_id + model_name + str(
-            np.mod(epoch, args.early_stop_iter)) + '.pth')
+            np.mod(epoch, args.early_stop_iter)) + args.sample_type + '.pth')
 
         auc, valid_loss = test(model, val_data_loader, loss, device)
         valid_aucs.append(auc)
@@ -159,7 +161,7 @@ def main(model, model_name, train_data_loader, val_data_loader, test_data_loader
     if is_early_stop:
         test_model = get_model(model_name, feature_nums, field_nums, args.latent_dims).to(device)
         load_path = args.save_param_dir + args.campaign_id + model_name + str(
-            early_stop_index) + '.pth'
+            early_stop_index) + args.sample_type + '.pth'
 
         test_model.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
     else:
@@ -173,9 +175,9 @@ def main(model, model_name, train_data_loader, val_data_loader, test_data_loader
                                                               (end_time - start_time).seconds))
 
     for i in range(args.early_stop_iter):
-        os.remove(args.save_param_dir + args.campaign_id + model_name + str(i) + '.pth')
+        os.remove(args.save_param_dir + args.campaign_id + model_name + str(i) + args.sample_type + '.pth')
 
-    train_predicts, train_auc = submission(test_model, train_data_loader, device)
+    train_predicts, train_auc = submission(test_model, all_train_data_loader, device)
 
     return test_predicts, train_predicts
 
@@ -218,7 +220,10 @@ def get_dataset(args):
     train_data_file_name = 'train.ctr.' + args.sample_type + '.txt'
     train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
 
-    test_data_file_name = 'test.ctr.' + args.sample_type + '.txt'
+    val_data_file_name = 'val.ctr.all.txt'
+    val_fm = pd.read_csv(data_path + val_data_file_name, header=None).values.astype(int)
+    
+    test_data_file_name = 'test.ctr.all.txt'
     test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
 
     field_nums = train_fm.shape[1] - 1  # 特征域的数量
@@ -226,22 +231,20 @@ def get_dataset(args):
     with open(data_path + 'feat.ctr.' + args.sample_type + '.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
 
-    day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
-    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
-
-    train_data = train_fm[:train_indexs[1], :]
-    val_data = train_fm[train_indexs[1]:, :]
-
+    train_data = train_fm
+    val_data = val_fm
     test_data = test_fm
 
-    return train_data, val_data, test_data, field_nums, feature_nums
+    all_train_data = np.concatenate([train_data, val_data], axis=0)
+
+    return all_train_data, train_data, val_data, test_data, field_nums, feature_nums
 
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
     campaign_id = '1458/' # 1458, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-    train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)
+    train_fm, train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)
@@ -288,10 +291,13 @@ if __name__ == '__main__':
         test_predict_arr_dicts.setdefault(model_name, [])
         train_predict_arr_dicts.setdefault(model_name, [])
 
+    all_train_dataset = Data.libsvm_dataset(train_fm[:, 1:], train_fm[:, 0])
+    all_train_data_loader = torch.utils.data.DataLoader(all_train_dataset, batch_size=args.test_batch_size, num_workers=8)
+
     train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
 
-    val_dataset = Data.libsvm_dataset(val_data[:, 1:], train_data[:, 0])
+    val_dataset = Data.libsvm_dataset(val_data[:, 1:], val_data[:, 0])
     val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.test_batch_size, num_workers=8)
 
     threads = []
@@ -305,7 +311,7 @@ if __name__ == '__main__':
             FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM_' + args.sample_type + '_best.pth')
             model.load_embedding(FM_pretain_args)
 
-        current_model_test_predicts , current_model_train_predicts = main(model, model_name, train_data_loader,
+        current_model_test_predicts, current_model_train_predicts = main(model, model_name, all_train_data_loader, train_data_loader,
                                                                           val_data_loader, test_data_loader,
                                                                           optimizer, loss, device, args)
 
@@ -340,7 +346,7 @@ if __name__ == '__main__':
 
     for key in train_predict_arr_dicts.keys():
         train_predict_arr_dicts[key] = np.mean(train_predict_arr_dicts[key], axis=0).flatten().tolist()
-    train_predict_arr_dicts['label'] = train_data[:, 0].tolist()
+    train_predict_arr_dicts['label'] = train_fm[:, 0].tolist()
 
     train_predict_df = pd.DataFrame(data=train_predict_arr_dicts)
     train_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id

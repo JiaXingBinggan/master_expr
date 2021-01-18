@@ -63,26 +63,16 @@ def submission(model, data_loader, device):
 
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
-    train_data_file_name = 'train.ctr.' + args.sample_type + '.txt'
-    train_fm = pd.read_csv(data_path + train_data_file_name, header=None).values.astype(int)
 
-    test_data_file_name = 'test.ctr.' + args.sample_type + '.txt'
-    test_fm = pd.read_csv(data_path + test_data_file_name, header=None).values.astype(int)
+    test_data_file_name = 'test.rl_ctr.' + args.sample_type + '.txt'
+    test_fm = pd.read_csv(data_path + test_data_file_name)
 
-    field_nums = train_fm.shape[1] - 1  # 特征域的数量
-
-    with open(data_path + 'feat.ctr.' + args.sample_type + '.txt') as feat_f:
-        feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
-
-    train_data = train_fm
-    test_data = test_fm
-
-    return train_data, test_data, field_nums, feature_nums
+    return test_fm
 
 if __name__ == '__main__':
     campaign_id = '1458/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-    train_data, test_data, field_nums, feature_nums = get_dataset(args)
+    test_data = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)
@@ -102,9 +92,6 @@ if __name__ == '__main__':
     if not os.path.exists(args.save_param_dir + args.campaign_id):
         os.mkdir(args.save_param_dir + args.campaign_id)
 
-    test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
-    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, num_workers=8)
-
     device = torch.device(args.device)  # 指定运行设备
 
     choose_models = args.ensemble_models.split(',')
@@ -114,22 +101,18 @@ if __name__ == '__main__':
     submission_path = args.data_path + args.dataset_name + args.campaign_id + 'ensemble' + '/'  # ctr 预测结果存放文件夹位置
     if not os.path.exists(submission_path):
         os.mkdir(submission_path)
+    model_subs = test_data[choose_models].values.astype(float)
+    labels = test_data[['label']].values.astype(float).tolist()
 
-    current_subs = []
-    for model_name in choose_models:
-        model = get_model(model_name, feature_nums, field_nums, args.latent_dims).to(device)
-        pretrain_params = torch.load(args.save_param_dir + args.campaign_id + model_name + '_' + args.sample_type + '_best.pth')
-        model.load_state_dict(pretrain_params)
+    final_subs = np.mean(model_subs, axis=1).tolist()
 
-        current_subs.append(submission(model, test_data_loader, device))
-    logger.info('ensemble auc {}'.format(roc_auc_score(test_data[:, 0: 1].tolist(), np.mean(current_subs, axis=0).tolist())))
+    logger.info('ensemble auc {}'.format(roc_auc_score(labels, final_subs)))
 
-    final_subs = np.mean(current_subs, axis=0)
     ensemble_preds_df = pd.DataFrame(data=final_subs)
     ensemble_preds_df.to_csv(submission_path + 'ensemble_' + str(args.ensemble_nums)
                              + '_' + args.sample_type + '_submission.csv')
 
-    final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
+    final_auc = roc_auc_score(labels, final_subs)
     ensemble_aucs = [[final_auc]]
     ensemble_aucs_df = pd.DataFrame(data=ensemble_aucs)
     ensemble_aucs_df.to_csv(submission_path + 'ensemble_' + str(args.ensemble_nums)
@@ -140,15 +123,3 @@ if __name__ == '__main__':
                                                                              args.campaign_id, ','.join(choose_models), final_auc))
     else:
         logger.info('Dataset {}, models {}, ensemble auc {}\n'.format(args.dataset_name, ','.join(choose_models), final_auc))
-
-
-
-
-
-
-
-
-
-
-
-

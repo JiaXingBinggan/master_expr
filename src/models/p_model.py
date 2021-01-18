@@ -50,7 +50,7 @@ class FM(nn.Module):
 
         self.bias = nn.Parameter(torch.zeros((output_dim,)))
         self.feature_embedding = nn.Embedding(feature_nums, latent_dims)
-        # nn.init.xavier_uniform_(self.feature_embedding.weight.data)
+        nn.init.xavier_uniform_(self.feature_embedding.weight.data)
 
     def forward(self, x):
         """
@@ -67,7 +67,7 @@ class FM(nn.Module):
         ix = torch.sum(square_of_sum - sum_of_square, dim=1,
                        keepdim=True)  # 若keepdim值为True,则在输出张量中,除了被操作的dim维度值降为1,其它维度与输入张量input相同。
 
-        out = self.bias + torch.sum(self.linear(linear_x), dim=1) + ix * 0.5
+        out = torch.sum(self.linear(linear_x), dim=1) + ix * 0.5
         pctrs = torch.sigmoid(out)
 
         return pctrs
@@ -134,7 +134,7 @@ class WideAndDeep(nn.Module):
         self.bias = nn.Parameter(torch.zeros((output_dim,)))
 
         self.embedding = nn.Embedding(self.feature_nums, self.latent_dims)
-        # nn.init.xavier_uniform_(self.embedding.weight.data)
+        nn.init.xavier_uniform_(self.embedding.weight.data)
 
         deep_input_dims = self.field_nums * self.latent_dims
 
@@ -179,7 +179,7 @@ class InnerPNN(nn.Module):
         self.latent_dims = latent_dims
 
         self.feature_embedding = nn.Embedding(self.feature_nums, self.latent_dims)
-        # nn.init.xavier_uniform_(self.feature_embedding.weight.data)
+        nn.init.xavier_uniform_(self.feature_embedding.weight.data)
 
         deep_input_dims = self.field_nums * self.latent_dims + self.field_nums * (self.field_nums - 1) // 2
 
@@ -235,7 +235,7 @@ class OuterPNN(nn.Module):
         self.latent_dims = latent_dims
 
         self.feature_embedding = nn.Embedding(self.feature_nums, self.latent_dims)
-        # nn.init.xavier_uniform_(self.feature_embedding.weight.data)
+        nn.init.xavier_uniform_(self.feature_embedding.weight.data)
 
         deep_input_dims = self.latent_dims + self.field_nums * self.latent_dims
         layers = list()
@@ -288,12 +288,12 @@ class DeepFM(nn.Module):
         self.latent_dims = latent_dims
 
         self.linear = nn.Embedding(self.feature_nums, output_dim)
-        # nn.init.xavier_normal_(self.linear.weight)
+        nn.init.xavier_uniform_(self.linear.weight)
         self.bias = nn.Parameter(torch.zeros((output_dim,)))
 
         # FM embedding
         self.feature_embedding = nn.Embedding(self.feature_nums, self.latent_dims)
-        # nn.init.xavier_uniform_(self.feature_embedding.weight.data)
+        nn.init.xavier_uniform_(self.feature_embedding.weight.data)
 
         # MLP
         deep_input_dims = self.field_nums * self.latent_dims
@@ -345,7 +345,7 @@ class FNN(nn.Module):
         self.field_nums = field_nums
         self.latent_dims = latent_dims
         self.feature_embedding = nn.Embedding(self.feature_nums, self.latent_dims)
-        # nn.init.xavier_uniform_(self.feature_embedding.weight.data)
+        nn.init.xavier_uniform_(self.feature_embedding.weight.data)
 
         deep_input_dims = self.field_nums * self.latent_dims
         layers = list()
@@ -394,7 +394,7 @@ class DCN(nn.Module):
         self.latent_dims = latent_dims
 
         self.feature_embedding = nn.Embedding(self.feature_nums, self.latent_dims)
-        # nn.init.xavier_uniform_(self.feature_embedding.weight.data)
+        nn.init.xavier_uniform_(self.feature_embedding.weight.data)
 
         deep_input_dims = self.field_nums * self.latent_dims
 
@@ -425,7 +425,7 @@ class DCN(nn.Module):
         ])
 
         self.linear = nn.Linear(neural_nums[-1] + self.field_nums * self.latent_dims, output_dim)
-        # nn.init.xavier_normal_(self.linear.weight)
+        nn.init.xavier_uniform_(self.linear.weight)
 
     def forward(self, x):
         embedding_x = self.feature_embedding(x).view(-1, self.field_nums * self.latent_dims)
@@ -454,7 +454,7 @@ class AFM(nn.Module):
         self.latent_dims = latent_dims
 
         self.feature_embedding = nn.Embedding(self.feature_nums, self.latent_dims)
-        # nn.init.xavier_uniform_(self.feature_embedding.weight.data)
+        nn.init.xavier_uniform_(self.feature_embedding.weight.data)
 
         self.row, self.col = list(), list()
         for i in range(self.field_nums - 1):

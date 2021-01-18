@@ -71,15 +71,15 @@ def init_parser(campaign_id):
     parser.add_argument('--init_exploration_rate', type=float, default=1)
     parser.add_argument('--end_exploration_rate', type=float, default=0.1)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
-    parser.add_argument('--rl_batch_size', type=int, default=128)
+    parser.add_argument('--rl_batch_size', type=int, default=64)
     parser.add_argument('--rl_iter_size', type=int, default=10)
     parser.add_argument('--rl_train_iters', type=int, default=128)
     parser.add_argument('--rl_gen_batch_size', type=int, default=4096*128)
-    parser.add_argument('--memory_size', type=int, default=100000) # 感觉需要再调调
+    parser.add_argument('--memory_size', type=int, default=500000) # 感觉需要再调调
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
-    parser.add_argument('--run_steps', type=float, default=5e5)
-    parser.add_argument('--stop_steps', type=float, default=6e5)
+    parser.add_argument('--run_steps', type=float, default=1e6)
+    parser.add_argument('--stop_steps', type=float, default=2e6)
     parser.add_argument('--record_times', type=int, default=200)
     parser.add_argument('--rl_early_stop_iter', type=int, default=10)
 
