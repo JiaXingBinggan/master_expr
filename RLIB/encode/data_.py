@@ -422,7 +422,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3386/', help='1458, 3358, 3386, 3427')
+    parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)
@@ -449,7 +449,7 @@ if __name__ == '__main__':
         origin_train_data = pd.read_csv(data_path + 'train.all.origin.csv')
 
         train_data = origin_train_data.iloc[:train_indexs[1], :] # 6-10
-        val_data = origin_train_data.iloc[train_indexs[1]: train_indexs[2], :] # 11
+        val_data = origin_train_data.iloc[train_indexs[1]: train_indexs[2] + 1, :] # 11
         test_data = origin_train_data.iloc[train_indexs[2]:, :] # 12
 
         train_data.to_csv(data_path + 'train.bid.all.csv', index=None)

@@ -116,9 +116,14 @@ def bid_main(bid_prices, imp_datas, budget):
     return win_clks, real_clks, bids, imps, cost
 
 
-def get_model(batch_size, device):
-    RL_model = td3.TD3_Model(action_nums=1,
-                             batch_size=batch_size,
+def get_model(args, device):
+    RL_model = td3.TD3_Model(args.neuron_nums,
+                             action_nums=1,
+                             lr_A=args.lr_A,
+                             lr_C=args.lr_C,
+                             memory_size=args.memory_size,
+                             tau=args.tau,
+                             batch_size=args.rl_batch_size,
                              device=device
                              )
 
@@ -139,7 +144,7 @@ def get_dataset(args):
     ecpc = np.sum(train_data[:, 0]) / np.sum(train_data[:, 2])
     origin_ctr = np.sum(train_data[:, 0]) / len(train_data)
     avg_mprice = np.sum(train_data[:, 2]) / len(train_data)
-    print(origin_ctr)
+
     return train_data, test_data, ecpc, origin_ctr, avg_mprice
 
 
@@ -213,27 +218,25 @@ if __name__ == '__main__':
     if not os.path.exists(submission_path):
         os.mkdir(submission_path)
 
-
     device = torch.device(args.device)  # 指定运行设备
 
     logger.info(campaign_id)
     logger.info('RL model ' + args.model_name + ' has been training')
+    logger.info(args)
 
     actions = np.array(list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10)))
 
-    rl_model = get_model(args.rl_batch_size, device)
+    rl_model = get_model(args, device)
     B = args.budget * args.budget_para[0]
     print(B)
 
-    # hb_clk_dict = {}
-    # for para in actions:
-    #     bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
-    #     res_ = bid_main(bid_datas, train_data, B)
-    #     hb_clk_dict.setdefault(para, res_[0])
-    #
-    # hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
-    # print(hb_base)
-    hb_base = 65
+    hb_clk_dict = {}
+    for para in actions:
+        bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
+        res_ = bid_main(bid_datas, train_data, B)
+        hb_clk_dict.setdefault(para, res_[0])
+
+    hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
 
     train_losses = []
 
@@ -246,12 +249,55 @@ if __name__ == '__main__':
 
     ep_train_records = []
     ep_test_records = []
+    ep_test_actions = []
     for ep in range(args.episodes):
-        budget = B
+        if ep % 1 == 0:
+            test_records = [0, 0, 0, 0, 0]
+            tmp_test_state = [1, 0, 0, 0]
+            init_test_state = [1, 0, 0, 0]
+            test_actions = [0 for _ in range(24)]
+            test_rewards = 0
+            budget = B
+            hour_t = 0
+            for t in range(24):
+                if budget > 0:
+                    hour_datas = test_data[test_data[:, hour_index] == t]
 
+                    state = torch.tensor(init_test_state).float() if not t else torch.tensor(tmp_test_state).float()
+
+                    action = rl_model.choose_action(state.unsqueeze(0))[0, 0].item()
+                    test_actions[t] = action
+                    bid_datas = generate_bid_price((hour_datas[:, ctr_index] * hb_base / origin_ctr) / (1 + action))
+                    res_ = bid_main(bid_datas, hour_datas, budget)
+
+                    # win_clks, real_clks, bids, imps, cost
+
+                    test_records = [test_records[i] + res_[i] for i in range(len(test_records))]
+                    budget -= res_[-1]
+
+                    hb_bid_datas = generate_bid_price(hour_datas[:, ctr_index] * hb_base / origin_ctr)
+                    res_hb = bid_main(hb_bid_datas, hour_datas, budget)
+
+                    r_t = reward_func(res_[0], res_hb[0], res_[3], res_hb[3])
+                    test_rewards += r_t
+
+                    left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
+                    # avg_budget_ratio, cost_ratio, ctr, win_rate
+                    next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
+                                  res_[4] / B,
+                                  res_[0] / res_[3] if res_[3] else 0,
+                                  res_[3] / res_[2] if res_[2] else 0]
+                    tmp_test_state = next_state
+
+                    hour_t += 1
+            ep_test_records.append([ep] + test_records + [test_rewards])
+            ep_test_actions.append(test_actions)
+            print(ep, 'test', test_records, test_rewards)
+
+        budget = B
         tmp_state = [1, 0, 0, 0]
         init_state = [1, 0, 0, 0]
-        records = [0, 0, 0, 0, 0]
+        train_records = [0, 0, 0, 0, 0]
         # win_clks, real_clks, bids, imps, cost
         # win_clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
         critic_loss = 0
@@ -269,7 +315,7 @@ if __name__ == '__main__':
                 res_ = bid_main(bid_datas, hour_datas, budget)
                 # win_clks, real_clks, bids, imps, cost
 
-                records = [records[i] + res_[i] for i in range(len(records))]
+                train_records = [train_records[i] + res_[i] for i in range(len(train_records))]
                 budget -= res_[-1]
 
                 left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
@@ -302,55 +348,19 @@ if __name__ == '__main__':
 
                 if rl_model.memory.memory_counter >= args.rl_batch_size:
                     critic_loss = rl_model.learn()
+        if ep % 1 == 0:
+            ep_train_records.append([ep] + train_records + [critic_loss])
+
 
         # print('train', records, critic_loss)
 
-        if ep % 10 == 0:
-            ep_train_records.append([ep] + records + [critic_loss])
-            test_records = [0, 0, 0, 0, 0]
-            tmp_test_state = [1, 0, 0, 0]
-            init_test_state = [1, 0, 0, 0]
-            test_rewards = 0
-            budget = B
-            hour_t = 0
-            for t in range(24):
-                if budget > 0:
-                    hour_datas = test_data[test_data[:, hour_index] == t]
-
-                    state = torch.tensor(init_test_state).float() if not t else torch.tensor(tmp_test_state).float()
-
-                    action = rl_model.choose_action(state.unsqueeze(0))[0, 0].item()
-
-                    bid_datas = generate_bid_price((hour_datas[:, ctr_index] * hb_base / origin_ctr) / (1 + action))
-                    res_ = bid_main(bid_datas, hour_datas, budget)
-
-                    # win_clks, real_clks, bids, imps, cost
-
-                    test_records = [test_records[i] + res_[i] for i in range(len(records))]
-                    budget -= res_[-1]
-
-                    hb_bid_datas = generate_bid_price(hour_datas[:, ctr_index] * hb_base / origin_ctr)
-                    res_hb = bid_main(hb_bid_datas, hour_datas, budget)
-
-                    r_t = reward_func(res_[0], res_hb[0], res_[3], res_hb[3])
-                    test_rewards += r_t
-
-                    left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
-                    # avg_budget_ratio, cost_ratio, ctr, win_rate
-                    next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
-                                  res_[4] / B,
-                                  res_[0] / res_[3] if res_[3] else 0,
-                                  res_[3] / res_[2] if res_[2] else 0]
-                    tmp_test_state = next_state
-
-                    hour_t += 1
-            ep_test_records.append([ep] + test_records + [test_rewards / hour_t])
-            print(ep, 'test', test_records, test_rewards / hour_t)
-
     train_record_df = pd.DataFrame(data=ep_train_records,
                                    columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
-    train_record_df.to_csv(submission_path + 'fab_train_cords' + str(args.budget_para[0]) + '.csv', index=None)
+    train_record_df.to_csv(submission_path + 'fab_train_records' + str(args.budget_para[0]) + '.csv', index=None)
 
     test_record_df = pd.DataFrame(data=ep_test_records,
                                   columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
     test_record_df.to_csv(submission_path + 'fab_test_records' + str(args.budget_para[0]) + '.csv', index=None)
+
+    test_action_df = pd.DataFrame(data=ep_test_actions)
+    test_action_df.to_csv(submission_path + 'fab_test_actions' + str(args.budget_para[0]) + '.csv')

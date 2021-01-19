@@ -52,8 +52,8 @@ def init_parser(campaign_id):
     parser.add_argument('--data_mprice_index', type=int, default=0)
     parser.add_argument('--data_ctr_index', type=int, default=1)
     parser.add_argument('--data_clk_index', type=int, default=2)
-    parser.add_argument('--budget', type=float, default=1e7)
-    parser.add_argument('--budget_para', type=list, default=[1/1], help='1,2')
+    parser.add_argument('--budget', type=float, default=16e6)
+    parser.add_argument('--budget_para', type=list, default=[1/4], help='1,2,4')
 
     parser.add_argument('--action_nums', type=int, default=300)
 

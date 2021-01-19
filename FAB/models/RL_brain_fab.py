@@ -30,14 +30,14 @@ class Memory(object):
         self.beta_increment_per_sampling = 0.00001
         self.abs_err_upper = 1  # abs_err_upper和epsilon ，表明p优先级值的范围在[epsilon,abs_err_upper]之间，可以控制也可以不控制
 
-        self.memory_size = memory_size
+        self.memory_size = int(memory_size)
         self.memory_counter = 0
 
-        self.prioritys_ = torch.zeros(size=[memory_size, 2]).to(self.device)
+        self.prioritys_ = torch.zeros(size=[self.memory_size, 2]).to(self.device)
         # indexs = torch.range(0, self.memory_size)
         # self.prioritys_[:, 1] = indexs
 
-        self.memory = torch.zeros(size=[memory_size, transition_lens]).to(self.device)
+        self.memory = torch.zeros(size=[self.memory_size, transition_lens]).to(self.device)
 
     def get_priority(self, td_error):
         return torch.pow(torch.abs(td_error) + self.epsilon, self.alpha)
@@ -115,7 +115,7 @@ class Memory(object):
         self.prioritys_[choose_idx, 0:1] = td_errors
 
 
-def weight_init_critic(layers):
+def weight_init(layers):
     # source: The other layers were initialized from uniform distributions
     # [− 1/sqrt(f) , 1/sqrt(f) ] where f is the fan-in of the layer
     for layer in layers:
@@ -125,26 +125,16 @@ def weight_init_critic(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(0, lim)
-            layer.bias.data.fill_(0)
-
-def weight_init_actor(layers):
-    # source: The other layers were initialized from uniform distributions
-    # [− 1/sqrt(f) , 1/sqrt(f) ] where f is the fan-in of the layer
-    for layer in layers:
-        if isinstance(layer, nn.BatchNorm1d):
-            layer.weight.data.fill_(1)
-            layer.bias.data.zero_()
-        elif isinstance(layer, nn.Linear):
-            layer.weight.data.uniform_(-0.003, 0.003)
+            layer.weight.data.uniform_(-0.005, 0.005)
             layer.bias.data.fill_(0)
 
 
 class Critic(nn.Module):
-    def __init__(self, input_dims, action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(Critic, self).__init__()
         self.input_dims = input_dims
         self.action_nums = action_nums
+        self.neuron_nums = neuron_nums
 
         deep_input_dims_1 = self.input_dims + self.action_nums
 
@@ -152,17 +142,13 @@ class Critic(nn.Module):
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.zero_()
 
-        neuron_nums = [128, 64]
-
         self.layers_1 = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers_1.append(nn.Linear(deep_input_dims_1, neuron_num))
             # self.layers_1.append(nn.BatchNorm1d(neuron_num))
             self.layers_1.append(nn.ReLU())
-            self.layers_1.append(nn.Dropout(p=0.2))
+            # self.layers_1.append(nn.Dropout(p=0.2))
             deep_input_dims_1 = neuron_num
-
-        # weight_init_critic(self.layers_1)
 
         self.layers_1.append(nn.Linear(deep_input_dims_1, 1))
 
@@ -172,11 +158,8 @@ class Critic(nn.Module):
             self.layers_2.append(nn.Linear(deep_input_dims_2, neuron_num))
             # self.layers_2.append(nn.BatchNorm1d(neuron_num))
             self.layers_2.append(nn.ReLU())
-            self.layers_2.append(nn.Dropout(p=0.2))
+            # self.layers_2.append(nn.Dropout(p=0.2))
             deep_input_dims_2 = neuron_num
-
-        # weight_init_critic(self.layers_2)
-
         self.layers_2.append(nn.Linear(deep_input_dims_2, 1))
 
         self.mlp_1 = nn.Sequential(*self.layers_1)
@@ -199,10 +182,11 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, input_dims, action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(Actor, self).__init__()
         self.input_dims = input_dims
         self.action_dims = action_nums
+        self.neuron_nums = neuron_nums
 
         self.bn_input = nn.BatchNorm1d(self.input_dims)
         self.bn_input.weight.data.fill_(1)
@@ -210,19 +194,16 @@ class Actor(nn.Module):
 
         deep_input_dims = self.input_dims
 
-        neuron_nums = [128, 64]
         self.layers = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             # self.layers.append(nn.BatchNorm1d(neuron_num))
             self.layers.append(nn.ReLU())
-            self.layers.append(nn.Dropout(p=0.2))
+            # self.layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
-        # weight_init_actor(self.layers)
-
         self.layers.append(nn.Linear(deep_input_dims, 1))
-        self.layers[-1].weight.data.uniform_(-0.003, 0.003)
+        weight_init([self.layers[-1]])
 
         self.layers.append(nn.Tanh())
 
@@ -245,6 +226,7 @@ class Actor(nn.Module):
 class TD3_Model():
     def __init__(
             self,
+            neuron_nums,
             action_nums=1,
             lr_A=3e-4,
             lr_C=3e-4,
@@ -259,9 +241,10 @@ class TD3_Model():
         self.lr_A = lr_A
         self.lr_C = lr_C
         self.gamma = reward_decay
-        self.memory_size = memory_size
+        self.memory_size = int(memory_size)
         self.batch_size = batch_size
         self.tau = tau
+        self.neuron_nums = neuron_nums
         self.device = device
 
         setup_seed(random_seed)
@@ -272,8 +255,8 @@ class TD3_Model():
 
         self.memory = Memory(self.memory_size, self.input_dims * 2 + self.action_nums + 2, self.device)
 
-        self.Actor = Actor(self.input_dims, self.action_nums).to(self.device)
-        self.Critic = Critic(self.input_dims, self.action_nums).to(self.device)
+        self.Actor = Actor(self.input_dims, self.action_nums, self.neuron_nums).to(self.device)
+        self.Critic = Critic(self.input_dims, self.action_nums, self.neuron_nums).to(self.device)
 
         self.Actor_ = copy.deepcopy(self.Actor)
         self.Critic_ = copy.deepcopy(self.Critic)
@@ -328,14 +311,14 @@ class TD3_Model():
         self.Critic_.train()
 
         # sample
-        # choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
-        if self.memory.memory_counter > self.memory_size:
-            # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
-            sample_index = random.sample(range(self.memory_size), self.batch_size)
-        else:
-            sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
-
-        batch_memory = self.memory.memory[sample_index, :]
+        choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
+        # if self.memory.memory_counter > self.memory_size:
+        #     # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
+        #     sample_index = random.sample(range(self.memory_size), self.batch_size)
+        # else:
+        #     sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
+        #
+        # batch_memory = self.memory.memory[sample_index, :]
 
         b_s = batch_memory[:, :self.input_dims]
         b_a = batch_memory[:, self.input_dims: self.input_dims + self.action_nums]
@@ -357,11 +340,11 @@ class TD3_Model():
 
         q1, q2 = self.Critic.evaluate(b_s, b_a)
 
-        # critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
-        # critic_loss = (
-        # ISweights * (F.mse_loss(q1, q_target, reduction='none') + F.mse_loss(q2, q_target, reduction='none'))).mean()
+        critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
+        critic_loss = (
+        ISweights * (F.mse_loss(q1, q_target, reduction='none') + F.mse_loss(q2, q_target, reduction='none'))).mean()
 
-        critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
+        # critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
@@ -369,7 +352,7 @@ class TD3_Model():
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
-        # self.memory.batch_update(choose_idx, critic_td_error)
+        self.memory.batch_update(choose_idx, critic_td_error)
 
         if self.learn_iter % self.policy_freq == 0:
             actions_means = self.Actor.evaluate(b_s)

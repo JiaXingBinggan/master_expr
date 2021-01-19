@@ -143,7 +143,7 @@ class WideAndDeep(nn.Module):
         neuron_nums = [200, 300, 100] # recited paper
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -188,7 +188,7 @@ class InnerPNN(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -243,7 +243,7 @@ class OuterPNN(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -302,7 +302,7 @@ class DeepFM(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -353,7 +353,7 @@ class FNN(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
