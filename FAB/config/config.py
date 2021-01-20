@@ -41,9 +41,9 @@ def init_parser(campaign_id):
     parser.add_argument('--sample_type', default='all', help='all, down, rand')
 
     parser.add_argument('--budget', type=float, default=16e6)
-    parser.add_argument('--budget_para', type=list, default=[1/4], help='1,2,4')
+    parser.add_argument('--budget_para', type=list, default=[1/1], help='1,2,4')
 
-    parser.add_argument('--reward_type', type=str, default='clk', help='op, nop, clk')
+    parser.add_argument('--reward_type', type=str, default='op', help='op, nop, clk')
     # op 缩放，nop 不缩放，clk
 
     args = parser.parse_args()

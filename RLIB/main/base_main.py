@@ -154,6 +154,9 @@ def bid_main(bid_prices, imp_datas, budget):
                         last_win_index = lt_budget_indexs[idx]
                         cost += tmp_mprice
                         budget -= tmp_mprice
+                    else:
+                        break
+                real_clks += np.sum(final_imps[:last_win_index, 0])
             else:
                 win_clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
                 last_win_index = 0

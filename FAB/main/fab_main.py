@@ -99,6 +99,9 @@ def bid_main(bid_prices, imp_datas, budget):
                         last_win_index = lt_budget_indexs[idx]
                         cost += tmp_mprice
                         budget -= tmp_mprice
+                    else:
+                        break
+                real_clks += np.sum(final_imps[:last_win_index, 0])
             else:
                 win_clks, real_clks, bids, imps, cost = 0, 0, 0, 0, 0
                 last_win_index = 0
@@ -190,7 +193,7 @@ def reward_func(reward_type, fab_clks, hb_clks, fab_cost, hb_cost):
 '''
 
 if __name__ == '__main__':
-    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)
@@ -233,7 +236,6 @@ if __name__ == '__main__':
 
     rl_model = get_model(args, device)
     B = args.budget * args.budget_para[0]
-    print(B)
 
     hb_clk_dict = {}
     for para in actions:
@@ -324,20 +326,14 @@ if __name__ == '__main__':
                 budget -= res_[-1]
 
                 left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
-                if left_hour_ratio:
-                    # avg_budget_ratio, cost_ratio, ctr, win_rate
-                    next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
-                                  res_[4] / B,
-                                  res_[0] / res_[3] if res_[3] else 0,
-                                  res_[3] / res_[2] if res_[2] else 0]
-                    tmp_state = next_state
-                else:
-                    next_state = [0,
-                                  res_[4] / B,
-                                  res_[0] / res_[3] if res_[3] else 0,
-                                  res_[3] / res_[2] if res_[2] else 0]
-                    tmp_state = next_state
+                if not left_hour_ratio or budget <= 0:
                     done = 1
+                # avg_budget_ratio, cost_ratio, ctr, win_rate
+                next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
+                              res_[4] / B,
+                              res_[0] / res_[3] if res_[3] else 0,
+                              res_[3] / res_[2] if res_[2] else 0]
+                tmp_state = next_state
 
                 hb_bid_datas = generate_bid_price(hour_datas[:, ctr_index] * hb_base / origin_ctr)
                 res_hb = bid_main(hb_bid_datas, hour_datas, budget)

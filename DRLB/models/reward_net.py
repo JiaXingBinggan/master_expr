@@ -27,26 +27,25 @@ def weight_init(layers):
             layer.bias.data.fill_(0)
 
 class Net(nn.Module):
-    def __init__(self, state_dims, action_dims, reward_nums):
+    def __init__(self, state_dims, action_dims, reward_dims, neuron_dims):
         super(Net, self).__init__()
 
         self.input_dims = state_dims + action_dims
-        self.reward_nums = reward_nums
+        self.reward_dims = reward_dims
+        self.neuron_dims = neuron_dims
 
         deep_input_dims = self.input_dims
         self.bn_input = nn.BatchNorm1d(deep_input_dims)
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.fill_(0)
 
-        neuron_nums = [100, 100, 100]
-
         self.layers = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_dims:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             self.layers.append(nn.ReLU())
             deep_input_dims = neuron_num
 
-        self.layers.append(nn.Linear(deep_input_dims, self.reward_nums))
+        self.layers.append(nn.Linear(deep_input_dims, self.reward_dims))
 
         weight_init([self.layers[-1]])
 
@@ -60,20 +59,20 @@ class Net(nn.Module):
 class RewardNet:
     def __init__(
             self,
-            action_space,
-            action_numbers,
-            reward_numbers,
-            state_numbers,
-            learning_rate=0.001,
+            neuron_dims,
+            action_dims,
+            reward_dims,
+            state_dims,
+            lr=0.001,
             memory_size=500,
             batch_size=32,
             device='cuda:0',
     ):
-        self.action_space = action_space
-        self.action_numbers = action_numbers
-        self.reward_numbers = reward_numbers
-        self.state_numbers = state_numbers
-        self.lr = learning_rate
+        self.neuron_dims = neuron_dims
+        self.action_dims = action_dims
+        self.reward_dims = reward_dims
+        self.state_dims = state_dims
+        self.lr = lr
         self.memory_size = memory_size
         self.batch_size = batch_size
         self.device = device
@@ -91,11 +90,11 @@ class RewardNet:
         self.memory_S = defaultdict()
 
         # 将经验池<状态-动作-累积奖励中最大>中的转换组初始化为0
-        self.memory_D = torch.zeros((self.memory_size, self.state_numbers + 2)).to(self.device)
+        self.memory_D = torch.zeros((self.memory_size, self.state_dims + 2))
 
-        self.model_reward = Net(self.state_numbers, self.action_numbers, self.reward_numbers).to(
+        self.model_reward = Net(self.state_dims, self.action_dims, self.reward_dims, self.neuron_dims).to(
             self.device)
-        self.real_reward = Net(self.state_numbers, self.action_numbers, self.reward_numbers).to(self.device)
+        self.real_reward = Net(self.state_dims, self.action_dims, self.reward_dims, self.neuron_dims).to(self.device)
         self.real_reward.load_state_dict(self.model_reward.state_dict())
 
         # 优化器
@@ -115,9 +114,7 @@ class RewardNet:
     def get_reward_from_S(self, state_action_pair):
         return self.memory_S.get(state_action_pair, 0)
 
-    def store_D_pair(self, state, action, reward):
-        state_action_reward_pair = torch.cat([state, action, reward], dim=-1)
-
+    def store_D_pair(self, state_action_reward_pair):
         index = self.memory_D_counter % self.memory_size
         self.memory_D[index, :] = state_action_reward_pair
         self.memory_D_counter += 1
@@ -130,8 +127,8 @@ class RewardNet:
 
         batch_memory = self.memory_D[sample_index, :]
 
-        state_actions = batch_memory[:, :self.state_numbers + 1]
-        real_reward = batch_memory[:, self.state_numbers + 1].unsqueeze(1)
+        state_actions = batch_memory[:, :self.state_dims + 1].to(self.device)
+        real_reward = batch_memory[:, self.state_dims + 1].unsqueeze(1).to(self.device)
 
         model_reward = self.model_reward.forward(state_actions)
 
@@ -139,4 +136,5 @@ class RewardNet:
 
         self.optimizer.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_norm_(self.model_reward.parameters(), max_norm=40, norm_type=2)
         self.optimizer.step()
