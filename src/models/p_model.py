@@ -18,6 +18,18 @@ def weight_init(layers):
             layer.bias.data.fill_(0)
             # nn.init.kaiming_normal_(layer.weight.data, nonlinearity='relu')
 
+def weight_init_out(layers):
+    for layer in layers:
+        if isinstance(layer, nn.BatchNorm1d):
+            layer.weight.data.fill_(1)
+            layer.bias.data.zero_()
+        elif isinstance(layer, nn.Linear):
+            n = layer.in_features
+            y = 1.0 / np.sqrt(n)
+            layer.weight.data.uniform_(-0.003, 0.003)
+            layer.bias.data.fill_(0)
+            # nn.init.kaiming_normal_(layer.weight.data, nonlinearity='relu')
+
 
 # 传统的预测点击率模型
 class LR(nn.Module):
@@ -148,9 +160,11 @@ class WideAndDeep(nn.Module):
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
+        weight_init(layers)
+
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        weight_init(layers)
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 
@@ -193,9 +207,11 @@ class InnerPNN(nn.Module):
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
+        weight_init(layers)
+
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        weight_init(layers)
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 
@@ -248,9 +264,11 @@ class OuterPNN(nn.Module):
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
+        weight_init(layers)
+
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        weight_init(layers)
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 
@@ -307,9 +325,11 @@ class DeepFM(nn.Module):
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
+        weight_init(layers)
+
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        weight_init(layers)
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)  # 7141262125646409
 
@@ -358,9 +378,11 @@ class FNN(nn.Module):
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
+        weight_init(layers)
+
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        weight_init(layers)
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 

@@ -103,8 +103,9 @@ def get_dataset(args):
     print(np.sum(train_data[:, 2]), np.sum(test_data[:, 2]))
 
     ecpc = np.sum(train_data[:, 0]) / np.sum(train_data[:, 2])
+    orgin_ctr = np.sum(train_data[:, 2])/ len(train_data)
 
-    return train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc
+    return train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc, orgin_ctr
 
 def get_list_data(inputs, batch_size, shuffle):
     '''
@@ -169,7 +170,7 @@ if __name__ == '__main__':
     campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
-    train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc\
+    train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc, origin_ctr \
         = get_dataset(args)
 
     setup_seed(args.seed)
@@ -250,7 +251,8 @@ if __name__ == '__main__':
 
                 bids += 1
                 action = rl_model.choose_action(s_t.unsqueeze(0).to(device))
-                bid_price = actions[action]
+                bid_price = int(actions[action] * ctr / origin_ctr)
+                bid_price = bid_price if bid_price <= 300 else 300
 
                 if bid_price >= mprice:
                     cost += mprice
@@ -316,7 +318,8 @@ if __name__ == '__main__':
             hour_bids[hour] += 1
 
             action = rl_model.choose_best_action(s_t.unsqueeze(0).to(device))
-            bid_price = actions[action]
+            bid_price = int(actions[action] * ctr / origin_ctr)
+            bid_price = bid_price if bid_price <= 300 else 300
 
             bid_datas.append(bid_price)
 

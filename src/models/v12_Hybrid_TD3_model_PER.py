@@ -125,15 +125,16 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(-lim, lim)
+            layer.weight.data.uniform_(-0.003, 0.003)
             layer.bias.data.fill_(0)
 
 
 class Hybrid_Critic(nn.Module):
-    def __init__(self, input_dims, action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(Hybrid_Critic, self).__init__()
         self.input_dims = input_dims
         self.action_nums = action_nums
+        self.neuron_nums = neuron_nums
 
         deep_input_dims_1 = self.input_dims + self.action_nums * 2
 
@@ -141,10 +142,8 @@ class Hybrid_Critic(nn.Module):
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.zero_()
 
-        neuron_nums = [32, 64,16]
-
         self.layers_1 = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers_1.append(nn.Linear(deep_input_dims_1, neuron_num))
             # self.layers_1.append(nn.BatchNorm1d(neuron_num))
             self.layers_1.append(nn.ReLU())
@@ -155,7 +154,7 @@ class Hybrid_Critic(nn.Module):
 
         deep_input_dims_2 = self.input_dims + self.action_nums * 2
         self.layers_2 = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers_2.append(nn.Linear(deep_input_dims_2, neuron_num))
             # self.layers_2.append(nn.BatchNorm1d(neuron_num))
             self.layers_2.append(nn.ReLU())
@@ -187,10 +186,11 @@ class Hybrid_Critic(nn.Module):
 
 
 class Hybrid_Actor(nn.Module):
-    def __init__(self, input_dims, action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(Hybrid_Actor, self).__init__()
         self.input_dims = input_dims
         self.action_dims = action_nums
+        self.neuron_nums = neuron_nums
 
         self.bn_input = nn.BatchNorm1d(self.input_dims)
         self.bn_input.weight.data.fill_(1)
@@ -198,9 +198,8 @@ class Hybrid_Actor(nn.Module):
 
         deep_input_dims = self.input_dims
 
-        neuron_nums = [32, 64,16]
         self.layers = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             # self.layers.append(nn.BatchNorm1d(neuron_num))
             self.layers.append(nn.ReLU())
@@ -290,12 +289,11 @@ def onehot_from_logits(logits, eps=0.0):
 class Hybrid_TD3_Model():
     def __init__(
             self,
+            neuron_nums,
             action_nums=2,
-            campaign_id='1458',
             lr_C_A=1e-3,
             lr_D_A=1e-3,
             lr_C=1e-2,
-            data_len=10,
             reward_decay=1.0,
             memory_size=4096000,
             batch_size=256,
@@ -303,12 +301,11 @@ class Hybrid_TD3_Model():
             random_seed=1,
             device='cuda:0',
     ):
+        self.neuron_nums = neuron_nums
         self.action_nums = action_nums
-        self.campaign_id = campaign_id
         self.lr_C_A = lr_C_A
         self.lr_D_A = lr_D_A
         self.lr_C = lr_C
-        self.data_len = data_len
         self.gamma = reward_decay
         self.memory_size = memory_size
         self.batch_size = batch_size
@@ -323,8 +320,8 @@ class Hybrid_TD3_Model():
 
         self.memory = Memory(self.memory_size, self.input_dims * 2 + self.action_nums * 2 + 1, self.device)
 
-        self.Hybrid_Actor = Hybrid_Actor(self.input_dims, self.action_nums).to(self.device)
-        self.Hybrid_Critic = Hybrid_Critic(self.input_dims, self.action_nums).to(self.device)
+        self.Hybrid_Actor = Hybrid_Actor(self.input_dims, self.action_nums, self.neuron_nums).to(self.device)
+        self.Hybrid_Critic = Hybrid_Critic(self.input_dims, self.action_nums, self.neuron_nums).to(self.device)
 
         self.Hybrid_Actor_ = copy.deepcopy(self.Hybrid_Actor)
         self.Hybrid_Critic_ = copy.deepcopy(self.Hybrid_Critic)

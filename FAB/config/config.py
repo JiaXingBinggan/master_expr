@@ -24,13 +24,13 @@ def init_parser(campaign_id):
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi, avazu')
     parser.add_argument('--campaign_id', default='1458/', help='1458, 3358, 3386, 3427, 3476, avazu')
     parser.add_argument('--ctr_model_name', default='LR', help='LR,FM,FNN...')
-    parser.add_argument('--episodes', type=int, default=1000)
+    parser.add_argument('--episodes', type=int, default=3000)
     parser.add_argument('--model_name', default='FAB')
     parser.add_argument('--lr_A', type=float, default=3e-4)
     parser.add_argument('--lr_C', type=float, default=3e-4)
     parser.add_argument('--neuron_nums', type=list, default=[128, 64])
     parser.add_argument('--tau', type=float, default=0.0005)
-    parser.add_argument('--memory_size', type=float, default=1e4)
+    parser.add_argument('--memory_size', type=float, default=100000)
     parser.add_argument('--rl_batch_size', type=int, default=32)
     parser.add_argument('--rl_early_stop_iter', type=int, default=20)
     parser.add_argument('--device', default='cuda:0')
@@ -41,7 +41,10 @@ def init_parser(campaign_id):
     parser.add_argument('--sample_type', default='all', help='all, down, rand')
 
     parser.add_argument('--budget', type=float, default=16e6)
-    parser.add_argument('--budget_para', type=list, default=[1/1], help='1,2,4')
+    parser.add_argument('--budget_para', type=list, default=[1/4], help='1,2,4')
+
+    parser.add_argument('--reward_type', type=str, default='clk', help='op, nop, clk')
+    # op 缩放，nop 不缩放，clk
 
     args = parser.parse_args()
     args.campaign_id = campaign_id

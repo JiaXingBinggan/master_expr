@@ -65,11 +65,9 @@ def init_parser(campaign_id):
     # for RL training
     parser.add_argument('--rl_model_name', default='H_RL_CTR')
     parser.add_argument('--init_lr_a', type=float, default=3e-4)
-    parser.add_argument('--end_lr_a', type=float, default=1e-4)
     parser.add_argument('--init_lr_c', type=float, default=3e-4)
-    parser.add_argument('--end_lr_c', type=float, default=3e-4)
-    parser.add_argument('--init_exploration_rate', type=float, default=1)
-    parser.add_argument('--end_exploration_rate', type=float, default=0.1)
+    parser.add_argument('--neuron_nums', type=list, default=[32, 64, 16])
+    parser.add_argument('--tau', type=float, default=0.0005)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
     parser.add_argument('--rl_batch_size', type=int, default=64)
     parser.add_argument('--rl_iter_size', type=int, default=10)
@@ -78,8 +76,8 @@ def init_parser(campaign_id):
     parser.add_argument('--memory_size', type=int, default=500000) # 感觉需要再调调
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
-    parser.add_argument('--run_steps', type=float, default=5e5)
-    parser.add_argument('--stop_steps', type=float, default=6e6)
+    parser.add_argument('--run_steps', type=float, default=1e6)
+    parser.add_argument('--stop_steps', type=float, default=2e6)
     parser.add_argument('--record_times', type=int, default=200)
     parser.add_argument('--rl_early_stop_iter', type=int, default=10)
 
@@ -89,7 +87,7 @@ def init_parser(campaign_id):
     if args.ensemble_nums == 3:
         args.ensemble_models = 'LR,FM,FNN'
     elif args.ensemble_nums == 5:
-        args.ensemble_models = 'LR,FM,FNN,W&D,IPNN'
+        args.ensemble_models = 'LR,FM,DeepFM,DCN,AFM'
     elif args.ensemble_nums == 7:
         args.ensemble_models = 'LR,FM,FNN,DeepFM,W&D,IPNN,DCN,AFM'
 

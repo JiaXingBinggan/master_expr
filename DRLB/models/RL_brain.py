@@ -5,10 +5,6 @@ import numpy as np
 import random
 import copy
 from torch.autograd import Variable
-from torch.distributions import MultivariateNormal, Categorical
-import datetime
-from torch.distributions import Normal, Categorical, MultivariateNormal
-
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -125,7 +121,7 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(-lim, lim)
+            layer.weight.data.uniform_(-0.003, 0.003)
             layer.bias.data.fill_(0)
 
 
@@ -201,6 +197,7 @@ class DQN():
             reward_decay=1.0,
             memory_size=100000,
             batch_size=32,
+            replace_iter=100,
             random_seed=1,
             device='cuda:0',
     ):
@@ -209,11 +206,11 @@ class DQN():
         self.gamma = reward_decay
         self.memory_size = memory_size
         self.batch_size = batch_size
+        self.replace_iter = replace_iter
         self.device = device
 
         setup_seed(random_seed)
 
-        self.replace_iter = 100
         self.learn_iter = 0
 
         self.memory_counter = 0
@@ -271,14 +268,13 @@ class DQN():
         self.agent_.train()
 
         # sample
-        choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
-        # if self.memory.memory_counter > self.memory_size:
-        #     # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
-        #     sample_index = random.sample(range(self.memory_size), self.batch_size)
-        # else:
-        #     sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
-        #
-        # batch_memory = self.memory.memory[sample_index, :]
+        if self.memory.memory_counter > self.memory_size:
+            # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
+            sample_index = random.sample(range(self.memory_size), self.batch_size)
+        else:
+            sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
+
+        batch_memory = self.memory.memory[sample_index, :]
 
         b_s = batch_memory[:, :self.input_dims]
         b_a = batch_memory[:, self.input_dims: self.input_dims + 1].long()
@@ -292,12 +288,8 @@ class DQN():
 
         q_target = b_r + self.gamma * torch.mul(q_next.max(1)[0].view(self.batch_size, 1), b_done)
 
-        td_errors = q_target - q_eval
-
-        self.memory.batch_update(choose_idx, td_errors)
-
         # 训练eval_net
-        loss = (ISweights * F.mse_loss(q_eval, q_target, reduction='none')).mean()
+        loss = F.mse_loss(q_eval, q_target)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -305,15 +297,3 @@ class DQN():
 
         return loss.item()
 
-
-class OrnsteinUhlenbeckNoise:
-    def __init__(self, mu):
-        self.theta, self.dt, self.sigma = 0.15, 0.01, 0.2
-        self.mu = mu
-        self.x_prev = np.zeros_like(self.mu)
-
-    def __call__(self):
-        x = self.x_prev + self.theta * (self.mu - self.x_prev) * self.dt + \
-            self.sigma * np.sqrt(self.dt) * np.random.normal(size=self.mu.shape)
-        self.x_prev = x
-        return x

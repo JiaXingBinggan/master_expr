@@ -148,7 +148,7 @@ def get_dataset(args):
     return train_data, test_data, ecpc, origin_ctr, avg_mprice
 
 
-def reward_func(fab_clks, hb_clks, fab_cost, hb_cost):
+def reward_func(reward_type, fab_clks, hb_clks, fab_cost, hb_cost):
     if fab_clks >= hb_clks and fab_cost < hb_cost:
         r = 5
     elif fab_clks >= hb_clks and fab_cost >= hb_cost:
@@ -158,7 +158,12 @@ def reward_func(fab_clks, hb_clks, fab_cost, hb_cost):
     else:
         r = -2.5
 
-    return r / 1000
+    if reward_type == 'op':
+        return r / 1000
+    elif reward_type == 'nop':
+        return r
+    else:
+        return fab_clks
 
 
 '''
@@ -185,7 +190,7 @@ def reward_func(fab_clks, hb_clks, fab_cost, hb_cost):
 '''
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)
@@ -251,7 +256,7 @@ if __name__ == '__main__':
     ep_test_records = []
     ep_test_actions = []
     for ep in range(args.episodes):
-        if ep % 1 == 0:
+        if ep % 10 == 0:
             test_records = [0, 0, 0, 0, 0]
             tmp_test_state = [1, 0, 0, 0]
             init_test_state = [1, 0, 0, 0]
@@ -278,7 +283,7 @@ if __name__ == '__main__':
                     hb_bid_datas = generate_bid_price(hour_datas[:, ctr_index] * hb_base / origin_ctr)
                     res_hb = bid_main(hb_bid_datas, hour_datas, budget)
 
-                    r_t = reward_func(res_[0], res_hb[0], res_[3], res_hb[3])
+                    r_t = reward_func(args.reward_type, res_[0], res_hb[0], res_[3], res_hb[3])
                     test_rewards += r_t
 
                     left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
@@ -337,7 +342,7 @@ if __name__ == '__main__':
                 hb_bid_datas = generate_bid_price(hour_datas[:, ctr_index] * hb_base / origin_ctr)
                 res_hb = bid_main(hb_bid_datas, hour_datas, budget)
 
-                r_t = reward_func(res_[0], res_hb[0], res_[3], res_hb[3])
+                r_t = reward_func(args.reward_type, res_[0], res_hb[0], res_[3], res_hb[3])
 
                 transitions = torch.cat([state, torch.tensor([action]).float(),
                                          torch.tensor(next_state).float(),
@@ -348,19 +353,18 @@ if __name__ == '__main__':
 
                 if rl_model.memory.memory_counter >= args.rl_batch_size:
                     critic_loss = rl_model.learn()
-        if ep % 1 == 0:
+        if ep % 10 == 0:
             ep_train_records.append([ep] + train_records + [critic_loss])
-
 
         # print('train', records, critic_loss)
 
     train_record_df = pd.DataFrame(data=ep_train_records,
                                    columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
-    train_record_df.to_csv(submission_path + 'fab_train_records' + str(args.budget_para[0]) + '.csv', index=None)
+    train_record_df.to_csv(submission_path + 'fab_train_records_' + args.reward_type + str(args.budget_para[0]) + '.csv', index=None)
 
     test_record_df = pd.DataFrame(data=ep_test_records,
                                   columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
-    test_record_df.to_csv(submission_path + 'fab_test_records' + str(args.budget_para[0]) + '.csv', index=None)
+    test_record_df.to_csv(submission_path + 'fab_test_records_' + args.reward_type + str(args.budget_para[0]) + '.csv', index=None)
 
     test_action_df = pd.DataFrame(data=ep_test_actions)
-    test_action_df.to_csv(submission_path + 'fab_test_actions' + str(args.budget_para[0]) + '.csv')
+    test_action_df.to_csv(submission_path + 'fab_test_actions_' + args.reward_type + str(args.budget_para[0]) + '.csv')

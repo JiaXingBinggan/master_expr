@@ -37,7 +37,7 @@ class Net(nn.Module):
 
         self.layers.append(nn.Linear(deep_input_dims, self.action_nums))
 
-        weight_init(self.layers)
+        weight_init([self.layers[-1]])
 
         self.mlp = nn.Sequential(*self.layers)
 
