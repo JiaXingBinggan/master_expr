@@ -332,7 +332,7 @@ if __name__ == '__main__':
                 lamda = lamda * (1 + action_space[action])
                 tmp_lamda = lamda
 
-                Lamda = Lamda * (1 + action_space[action])
+                # Lamda = Lamda * (1 + action_space[action])
 
                 bid_datas = generate_bid_price((hour_datas[:, ctr_index] * lamda))
                 res_ = bid_main(bid_datas, hour_datas, budget)
