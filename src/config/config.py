@@ -56,7 +56,7 @@ def init_parser(campaign_id):
     parser.add_argument('--save_log_dir', default='../main/logs/')
     parser.add_argument('--seed', type=int, default=1)
 
-    parser.add_argument('--sample_type', default='all', help='all, down, rand')
+    parser.add_argument('--sample_type', default='down', help='all, down, rand')
 
     # for ensemble
     parser.add_argument('--ensemble_nums', type=int, default=7, help='3,5,7')
