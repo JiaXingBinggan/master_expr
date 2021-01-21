@@ -5,9 +5,9 @@ from RLB.utility import *
 obj_type = "clk"
 clk_vp = 1
 N = 1000
-c0_a = [1/4] # no 4 8
+c0_a = [1/8] # no 4 8
 gamma = 1
-budget_para = 1/4
+budget_para = 1/8
 
 src = "ipinyou"
 for c0 in c0_a:

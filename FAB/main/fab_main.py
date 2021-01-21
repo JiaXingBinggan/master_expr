@@ -193,7 +193,7 @@ def reward_func(reward_type, fab_clks, hb_clks, fab_cost, hb_cost):
 '''
 
 if __name__ == '__main__':
-    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)
