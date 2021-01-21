@@ -178,8 +178,8 @@ def get_dataset(args):
 
     # clk,ctr,mprice,hour,time_frac
     columns = ['clk', 'ctr', 'mprice', 'hour', 'time_frac']
-    train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.data')[columns]
-    test_data = pd.read_csv(data_path + 'test.bid.all.data')[columns]
+    train_data = pd.read_csv(data_path + 'train.bid.all.data')[columns]
+    test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.data')[columns]
 
     train_data = train_data[['clk', 'ctr', 'mprice', 'hour']].values.astype(float)
     test_data = test_data[['clk', 'ctr', 'mprice', 'hour']].values.astype(float)
@@ -223,9 +223,10 @@ if __name__ == '__main__':
 
     data_clk_index, data_mprice_index = args.data_clk_index, args.data_mprice_index
 
-    base_algos = ['const', 'rand', 'lin', 'hb', 'ortb']
+    base_algos = ['const', 'rand', 'hb', 'lin', 'ortb']
 
     paras = list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10))
+    lamda_paras = list(np.arange(1e-6, 1e-4, 1e-6))
 
     # 一定要注意如果顺序的到快花费完预算的时候,例如预算200,但是花到180时,然后下一个曝光的市场价为21,应该去竞标下一个曝光(因为没有那么多钱)
 
@@ -251,6 +252,13 @@ if __name__ == '__main__':
                     bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
                     res_ = bid_main(bid_datas, train_data, budget)
                     clk_dict.setdefault(para, res_[0])
+            elif algo == 'ortb':
+                c = fit_c(train_data)
+                for lamda_para in lamda_paras:
+                    bid_datas = generate_bid_price(
+                        np.sqrt((train_data[:, 1] * c / lamda_para) + c * np.ones_like(train_data[:, 1]) ** 2))
+                    res_ = bid_main(bid_datas, train_data, budget)
+                    clk_dict.setdefault(lamda_para, res_[0])
 
             clk_dict = sorted(clk_dict.items(), key=lambda x: x[1])
             if clk_dict:
@@ -282,8 +290,8 @@ if __name__ == '__main__':
                 para = train_base[algo]
                 bid_datas = generate_bid_price(test_data[:, 1] * para / origin_ctr)
             elif algo == 'ortb':
-                c = fit_c(test_data)
-                lamda = 5e-6 # 1.0 5e-6 0.5 1e-5
+                c = fit_c(train_data)
+                lamda = train_base[algo]
                 bid_datas = generate_bid_price(
                     np.sqrt((test_data[:, 1] * c / lamda) + c * np.ones_like(test_data[:, 1]) ** 2))
             res_ = bid_main(bid_datas, test_data, budget)

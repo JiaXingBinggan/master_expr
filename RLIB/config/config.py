@@ -37,7 +37,7 @@ def init_parser(campaign_id):
 
     parser.add_argument('--latent_dims', default=10)
 
-    parser.add_argument('--sample_type', default='all', help='all, down, rand')
+    parser.add_argument('--sample_type', default='rand', help='all, rand')
 
     # for ctr prediction
     parser.add_argument('--batch_size', type=int, default=1024)
@@ -53,7 +53,7 @@ def init_parser(campaign_id):
     parser.add_argument('--data_ctr_index', type=int, default=1)
     parser.add_argument('--data_clk_index', type=int, default=2)
     parser.add_argument('--budget', type=float, default=16e6)
-    parser.add_argument('--budget_para', type=list, default=[1/1], help='1,2,4')
+    parser.add_argument('--budget_para', type=list, default=[1/1], help='1,2,4,8')
 
     parser.add_argument('--action_nums', type=int, default=300)
 

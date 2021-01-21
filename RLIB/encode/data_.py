@@ -160,9 +160,9 @@ def to_libsvm_encode(datapath, sample_type, time_frac_dict):
     fo.close()
 
     # indexing val
-    print('indexing ' + datapath + 'val.bid.' + sample_type + '.csv')
-    fi = open(datapath + 'val.bid.' + sample_type + '.csv', 'r')
-    fo = open(datapath + 'val.bid.' + sample_type + '.txt', 'w')
+    print('indexing ' + datapath + 'val.bid.all.csv')
+    fi = open(datapath + 'val.bid.all.csv', 'r')
+    fo = open(datapath + 'val.bid.all.txt', 'w')
 
     first = True
     for line in fi:
@@ -205,9 +205,9 @@ def to_libsvm_encode(datapath, sample_type, time_frac_dict):
         fo.write('\n')
 
     # indexing test
-    print('indexing ' + datapath + 'test.bid.all.csv')
-    fi = open(datapath + 'test.bid.all.csv', 'r')
-    fo = open(datapath + 'test.bid.all.txt', 'w')
+    print('indexing ' + datapath + 'test.bid.' + sample_type + '.csv')
+    fi = open(datapath + 'test.bid.' + sample_type + '.csv', 'r')
+    fo = open(datapath + 'test.bid.' + sample_type + '.txt', 'w')
 
     first = True
     for line in fi:
@@ -249,180 +249,22 @@ def to_libsvm_encode(datapath, sample_type, time_frac_dict):
         # fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
-# def to_libsvm_encode(datapath, sample_type, time_frac_dict):
-#     train_path = datapath + 'train.bid.' + sample_type + '.csv'
-#     train_encode = datapath + 'train.bid.' + sample_type + '.txt'
-#     test_path = datapath + 'test.bid.all.csv'
-#     test_encode = datapath + 'test.bid.' + sample_type + '.txt'
-#     feature_index = datapath + 'featindex.bid.' + sample_type + '.txt'
-#
-#     field = ['hour', 'weekday', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
-#              'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser', 'usertag']
-#
-#     table = collections.defaultdict(lambda: 0)
-#
-#     # 为特征名建立编号, filed
-#     def field_index(x):
-#         index = field.index(x)
-#         return index
-#
-#     def getIndices(key):
-#         indices = table.get(key)
-#         if indices is None:
-#             indices = len(table)
-#             table[key] = indices
-#         return indices
-#
-#     feature_indices = set()
-#     with open(train_encode, 'w') as outfile:
-#         for e, row in enumerate(DictReader(open(train_path)), start=1):
-#             features = []
-#             for k, v in row.items():
-#                 if k in field:
-#                     if len(v) > 0:
-#                         if k == 'usertag':
-#                             v = '-'.join(v.split(',')[:3])
-#                         elif k == 'slotprice':
-#                             price = int(v)
-#                             if price > 100:
-#                                 v = "101+"
-#                             elif price > 50:
-#                                 v = "51-100"
-#                             elif price > 10:
-#                                 v = "11-50"
-#                             elif price > 0:
-#                                 v = "1-10"
-#                             else:
-#                                 v = "0"
-#                         kv = k + '_' + v
-#                         features.append('{0}'.format(getIndices(kv)))
-#                         feature_indices.add(kv + '\t' + str(getIndices(kv)))
-#                     else:
-#                         kv = k + '_' + 'other'
-#                         features.append('{0}'.format(getIndices(kv)))
-#
-#             if e % 100000 == 0:
-#                 print(datetime.now(), 'creating train.txt...', e)
-#             # click + winning price + hour + timestamp
-#             time_frac = row['timestamp'][8: 12]
-#             outfile.write('{0},{1},{2},{3},{4}\n'.format(row['click'], row['payprice'], row['hour'],
-#                                                          to_time_frac(int(time_frac[0:2]), int(time_frac[2:4]),
-#                                                                                    time_frac_dict), ','.join('{0}'.format(val) for val in features)))
-#
-#     with open(test_encode, 'w') as outfile:
-#         for e, row in enumerate(DictReader(open(test_path)), start=1):
-#             features = []
-#             for k, v in row.items():
-#                 if k in field:
-#                     if len(v) > 0:
-#                         if k == 'usertag':
-#                             v = '-'.join(v.split(',')[:3])
-#                         elif k == 'slotprice':
-#                             price = int(v)
-#                             if price > 100:
-#                                 v = "101+"
-#                             elif price > 50:
-#                                 v = "51-100"
-#                             elif price > 10:
-#                                 v = "11-50"
-#                             elif price > 0:
-#                                 v = "1-10"
-#                             else:
-#                                 v = "0"
-#                         kv = k + '_' + v
-#                         indices = table.get(kv)
-#                         if indices is None:
-#                             kv = k + '_' + 'other'
-#                             features.append('{0}'.format(getIndices(kv)))
-#                         else:
-#                             features.append('{0}'.format(getIndices(kv)))
-#                     else:
-#                         kv = k + '_' + 'other'
-#                         features.append('{0}'.format(getIndices(kv)))
-#
-#             if e % 100000 == 0:
-#                 print(datetime.now(), 'creating test.txt...', e)
-#             time_frac = row['timestamp'][8: 12]
-#             outfile.write('{0},{1},{2},{3},{4}\n'.format(row['click'], row['payprice'], row['hour'],
-#                                                          to_time_frac(int(time_frac[0:2]), int(time_frac[2:4]),
-#                                                                       time_frac_dict),
-#                                                          ','.join('{0}'.format(val) for val in features)))
-#
-#             # outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
-#
-#     featvalue = sorted(table.items(), key=operator.itemgetter(1))
-#     fo = open(feature_index, 'w')
-#     fo.write(str(featvalue[-1][1]) + '\n')
-#     for t, fv in enumerate(featvalue, start=1):
-#         if t > len(field):
-#             k = fv[0].split('_')[0]
-#             idx = field_index(k)
-#             fo.write(str(idx) + ':' + fv[0] + '\t' + str(fv[1]) + '\n')
-#         else:
-#             fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
-#     fo.close()
-
-def down_sample(data_path):
-    # 负采样后达到的点击率
-    CLICK_RATE = 0.001  # 1:1000
-
-    train_data = pd.read_csv(data_path + 'train.bid.all.csv').values
-    train_auc_num = len(train_data)
-
-    click = np.sum(train_data[:, 0])
-    total = train_auc_num
-    train_sample_rate = click / (CLICK_RATE * (total - click))
-    # 原始数据中的点击和曝光总数
-    print('clicks: {0} impressions: {1}\n'.format(click, total))
-    print('test_sample_rate is:', train_sample_rate)
-
-    # 获取训练样本
-    # test_sample_rate = test_sample_rate
-
-    # 获取测试样本
-    with open(data_path + 'val.bid.down.csv', 'w') as fo:
-        fi = open(data_path + 'val.bid.all.csv')
-        p = 0  # 原始正样本
-        n = 0  # 原始负样本
-        nn = 0  # 剩余的负样本
-        c = 0  # 总数
-        labels = 0
-        for t, line in enumerate(fi, start=1):
-            if t == 1:
-                fo.write(line)
-            else:
-                c += 1
-                label = line.split(',')[0]  # 是否点击标签
-                if int(label) == 0:
-                    n += 1
-                    if random.randint(0, train_auc_num) <= train_auc_num * train_sample_rate:  # down sample, 选择对应数据量的负样本
-                        fo.write(line)
-                        nn += 1
-                else:
-                    p += 1
-                    fo.write(line)
-
-            if t % 10000 == 0:
-                print(t)
-        fi.close()
-    print('数据负采样完成')
 
 
 def rand_sample(data_path):
-    train_data = pd.read_csv(data_path + 'val.bid.all.csv')
-    train_down_data = pd.read_csv(data_path + 'val.bid.down.csv')
+    test_data = pd.read_csv(data_path + 'test.bid.all.csv')
 
-    sample_indexs = random.sample(range(len(train_data)), len(train_down_data))
+    sample_indexs = random.sample(range(len(test_data)), int(len(test_data) * 0.7))
 
-    train_all_sample_data = train_data.iloc[sample_indexs, :]
+    test_all_sample_data = test_data.iloc[sample_indexs, :]
 
-    train_all_sample_data.to_csv(data_path + 'val.bid.rand.csv', index=None)
+    test_all_sample_data.to_csv(data_path + 'test.bid.rand.csv', index=None)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427')
+    parser.add_argument('--campaign_id', default='1458/', help='1458, 3358, 3386, 3427')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)
@@ -459,9 +301,7 @@ if __name__ == '__main__':
     # no sample
     to_libsvm_encode(data_path, 'all', time_frac_dict)
 
-    # down denotes down sample, rand denotes random sample
-    down_sample(data_path)
-    to_libsvm_encode(data_path, 'down', time_frac_dict)
+    # rand denotes random sample
 
     rand_sample(data_path)
     to_libsvm_encode(data_path, 'rand', time_frac_dict)

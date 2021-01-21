@@ -63,9 +63,9 @@ def get_dataset(args):
     train_data= pd.read_csv(data_path + 'train.bid.all.txt', header=None).values.astype(int)
     field_nums = train_data.shape[1] - 4
 
-    val_data = pd.read_csv(data_path + 'val.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
+    val_data = pd.read_csv(data_path + 'val.bid.all.txt', header=None).values.astype(int)
 
-    test_data = pd.read_csv(data_path + 'test.bid.all.txt', header=None).values.astype(int)
+    test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.txt', header=None).values.astype(int)
 
     with open(data_path + 'feat.bid.all.txt') as feat_f:
         feature_nums = int(list(islice(feat_f, 0, 1))[0].replace('\n', ''))
@@ -339,4 +339,4 @@ if __name__ == '__main__':
     train_df.to_csv(data_path + 'train.bid.' + args.sample_type + '.data', index=None)
 
     test_df = pd.DataFrame(data=test_data)
-    test_df.to_csv(data_path + 'test.bid.all.data', index=None)
+    test_df.to_csv(data_path + 'test.bid.' + args.sample_type + '.data', index=None)

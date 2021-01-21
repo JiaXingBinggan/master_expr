@@ -225,14 +225,14 @@ if __name__ == '__main__':
 
     B = args.budget * args.budget_para[0]
 
-    # hb_clk_dict = {}
-    # for para in actions:
-    #     bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
-    #     res_ = bid_main(bid_datas, train_data, B)
-    #     hb_clk_dict.setdefault(para, res_[0])
-    #
-    # hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
-    hb_base = 110
+    hb_clk_dict = {}
+    for para in actions:
+        bid_datas = generate_bid_price(train_data[:, 1] * para / origin_ctr)
+        res_ = bid_main(bid_datas, train_data, B)
+        hb_clk_dict.setdefault(para, res_[0])
+
+    hb_base = sorted(hb_clk_dict.items(), key=lambda x: x[1])[-1][0]
+
     Lamda = hb_base / origin_ctr
 
     train_losses = []
