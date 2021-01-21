@@ -255,13 +255,13 @@ def to_libsvm_encode(datapath, sample_type):
             if feat not in featindex:
                 featindex[feat] = maxindex
                 maxindex += 1
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            featindex[feat] = maxindex
-            maxindex += 1
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     featindex[feat] = maxindex
+        #     maxindex += 1
 
     print('feature size: ' + str(maxindex))
     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
@@ -303,14 +303,14 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 
@@ -347,14 +347,14 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
 
     # indexing test
@@ -390,14 +390,14 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 

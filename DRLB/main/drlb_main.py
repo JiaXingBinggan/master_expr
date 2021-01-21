@@ -271,7 +271,9 @@ if __name__ == '__main__':
                     state = torch.tensor(init_state).float() if not t else torch.tensor(tmp_state).float()
                     lamda = init_lamda if not t else tmp_lamda
 
-                    action = rl_model.choose_best_action(state.unsqueeze(0).to(device))
+                    action = rl_model.choose_action(state.unsqueeze(0).to(device))
+
+                    test_actions.append(action_space[action])
 
                     lamda = lamda * (1 + action_space[action])
                     tmp_lamda = lamda
@@ -330,6 +332,8 @@ if __name__ == '__main__':
                 lamda = lamda * (1 + action_space[action])
                 tmp_lamda = lamda
 
+                Lamda = Lamda * (1 + action_space[action])
+
                 bid_datas = generate_bid_price((hour_datas[:, ctr_index] * lamda))
                 res_ = bid_main(bid_datas, hour_datas, budget)
                 # win_clks, real_clks, bids, imps, cost, revenue
@@ -380,12 +384,12 @@ if __name__ == '__main__':
             ep_train_records.append([ep] + train_records + [critic_loss])
 
     train_record_df = pd.DataFrame(data=ep_train_records,
-                                   columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
-    train_record_df.to_csv(submission_path + 'fab_train_records_' + args.reward_type + str(args.budget_para[0]) + '.csv', index=None)
+                                   columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'revenue', 'loss'])
+    train_record_df.to_csv(submission_path + 'fab_train_records_' + str(args.budget_para[0]) + '.csv', index=None)
 
     test_record_df = pd.DataFrame(data=ep_test_records,
-                                  columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'loss'])
-    test_record_df.to_csv(submission_path + 'fab_test_records_' + args.reward_type + str(args.budget_para[0]) + '.csv', index=None)
+                                  columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'revenue'])
+    test_record_df.to_csv(submission_path + 'fab_test_records_' + str(args.budget_para[0]) + '.csv', index=None)
 
     test_action_df = pd.DataFrame(data=ep_test_actions)
-    test_action_df.to_csv(submission_path + 'fab_test_actions_' + args.reward_type + str(args.budget_para[0]) + '.csv')
+    test_action_df.to_csv(submission_path + 'fab_test_actions_' + str(args.budget_para[0]) + '.csv')

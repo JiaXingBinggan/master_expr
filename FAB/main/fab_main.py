@@ -193,7 +193,7 @@ def reward_func(reward_type, fab_clks, hb_clks, fab_cost, hb_cost):
 '''
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)
@@ -290,7 +290,7 @@ if __name__ == '__main__':
 
                     left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
                     # avg_budget_ratio, cost_ratio, ctr, win_rate
-                    next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
+                    next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else (budget / B),
                                   res_[4] / B,
                                   res_[0] / res_[3] if res_[3] else 0,
                                   res_[3] / res_[2] if res_[2] else 0]
@@ -326,10 +326,12 @@ if __name__ == '__main__':
                 budget -= res_[-1]
 
                 left_hour_ratio = (23 - t) / 23 if t <= 23 else 0
-                if not left_hour_ratio or budget <= 0:
-                    done = 1
+
+                if (not left_hour_ratio) or (budget <= 0):
+                     done = 1
+
                 # avg_budget_ratio, cost_ratio, ctr, win_rate
-                next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else 0,
+                next_state = [(budget / B) / left_hour_ratio if left_hour_ratio else (budget / B),
                               res_[4] / B,
                               res_[0] / res_[3] if res_[3] else 0,
                               res_[3] / res_[2] if res_[2] else 0]

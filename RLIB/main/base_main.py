@@ -283,7 +283,7 @@ if __name__ == '__main__':
                 bid_datas = generate_bid_price(test_data[:, 1] * para / origin_ctr)
             elif algo == 'ortb':
                 c = fit_c(test_data)
-                lamda = 1e-5 # 1.0 5e-6 0.5 1e-5
+                lamda = 5e-6 # 1.0 5e-6 0.5 1e-5
                 bid_datas = generate_bid_price(
                     np.sqrt((test_data[:, 1] * c / lamda) + c * np.ones_like(test_data[:, 1]) ** 2))
             res_ = bid_main(bid_datas, test_data, budget)
