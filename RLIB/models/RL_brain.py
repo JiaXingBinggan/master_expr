@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.config import config
 from torch.autograd import Variable
-
+import datetime
 def weight_init(layers):
     # source: The other layers were initialized from uniform distributions
     # [− 1/sqrt(f) , 1/sqrt(f) ] where f is the fan-in of the layer
@@ -19,16 +19,20 @@ def weight_init(layers):
             layer.bias.data.fill_(0)
 
 class Net(nn.Module):
-    def __init__(self,
-                 action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(Net, self).__init__()
+        self.input_dims = input_dims
         self.action_nums = action_nums
+        self.neuron_nums= neuron_nums
 
         self.layers = list()
-        neuron_nums = [64]
 
-        deep_input_dims = 4 # b,t,pctr
-        for neuron_num in neuron_nums:
+        deep_input_dims = self.input_dims
+        # self.bn_input = nn.BatchNorm1d(deep_input_dims)
+        # self.bn_input.weight.data.fill_(1)
+        # self.bn_input.bias.data.fill_(0)
+
+        for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             # self.layers.append(nn.BatchNorm1d(neuron_num))
             self.layers.append(nn.Dropout(p=0.2))
@@ -76,21 +80,25 @@ def onehot_from_logits(logits, eps=0.0):
 class PolicyGradient:
     def __init__(
             self,
+            neuron_nums,
             action_nums,
             weight_decay=1e-5,
             learning_rate=0.01,
             reward_decay=1,
             device='cuda:0',
     ):
+        self.neuron_nums= neuron_nums
         self.action_nums = action_nums
         self.lr = learning_rate
         self.gamma = reward_decay
         self.weight_decay = weight_decay
         self.device = device
 
+        self.input_dims = 4
+
         self.ep_states, self.ep_as, self.ep_rs = [], [], []
 
-        self.policy_net = Net(self.action_nums).to(self.device)
+        self.policy_net = Net(self.input_dims, self.action_nums, self.neuron_nums).to(self.device)
 
         self.optimizer = torch.optim.Adam(self.policy_net.parameters(), lr=self.lr)
 
@@ -103,11 +111,11 @@ class PolicyGradient:
 
     # 依据概率来选择动作，本身具有随机性
     def choose_action(self, state):
-        self.policy_net.train()
+        self.policy_net.eval()
         torch.cuda.empty_cache()
-        prob_weights = self.policy_net.forward(state).cpu().detach().numpy()
-
-        action = np.random.choice(range(self.action_nums), p=prob_weights.ravel())
+        with torch.no_grad():
+            prob_weights = self.policy_net.forward(state).cpu().numpy()
+            action = np.random.choice(range(self.action_nums), p=prob_weights.ravel())
 
         return action
 

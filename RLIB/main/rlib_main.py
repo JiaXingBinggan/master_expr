@@ -54,10 +54,11 @@ def get_ctr_model(model_name, feature_nums, field_nums, latent_dims):
     elif model_name == 'AFM':
         return Model.AFM(feature_nums, field_nums, latent_dims)
 
-def get_model(action_nums, lr, weight_decay, device):
+def get_model(action_nums, args, device):
     RL_model = rlib.PolicyGradient(action_nums=action_nums,
-            weight_decay=weight_decay,
-            learning_rate=lr,
+            weight_decay=args.weight_decay,
+            learning_rate=args.lr,
+            neuron_nums=args.neuron_nums,
             device=device)
 
     return RL_model
@@ -206,7 +207,7 @@ if __name__ == '__main__':
 
     actions = np.array(list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10)))
 
-    rl_model = get_model(actions.shape[0], args.lr, args.weight_decay, device)
+    rl_model = get_model(actions.shape[0], args, device)
     B = args.budget * args.budget_para[0]
 
     train_losses = []
@@ -228,12 +229,13 @@ if __name__ == '__main__':
 
         total_loss = 0
         epsilon = epsilon_min + ep * (epsilon_max - epsilon_min) / args.episodes
+        s = datetime.datetime.now()
         for _, t in enumerate(range(len(train_data))):
             data = train_data[t, :]
             mprice, ctr, clk, hour = data[data_mprice_index], data[data_ctr_index], data[data_clk_index], int(
                 data[data_clk_index + 1])
-
-            if hour <= 23 and budget - mprice >= 0:
+            
+            if (hour <= 23) and (budget - mprice >= 0):
                 real_clks += clk
 
                 if clk:
@@ -243,11 +245,8 @@ if __name__ == '__main__':
 
                 win_clk_rate = win_clks / with_clks if real_clks else 0
                 win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
-                remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23)
 
-                s_array = stand_scaler.fit_transform(np.array([remain_budget_on_hour_rate, ctr,
-                                                win_clk_rate, win_no_clk_rate]).reshape(-1, 1))
-                s_t = torch.Tensor(s_array.flatten())
+                s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
 
                 bids += 1
                 action = rl_model.choose_action(s_t.unsqueeze(0).to(device))
@@ -265,10 +264,11 @@ if __name__ == '__main__':
                     else:
                         win_no_clks += 1
 
+                remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23) if hour < 23 else budget / B
+
                 r_t = reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate)
 
                 rl_model.store_transition(s_t.detach().numpy().tolist(), action, r_t)
-
 
         logger.info('ep\t{}\t{}\t{}\t{}\t{}\t{}\t{}s'.format(ep, clks, real_clks, bids, imps, cost,
                                                             [(datetime.datetime.now() - start_time).seconds]))
@@ -308,16 +308,12 @@ if __name__ == '__main__':
             win_clk_rate = win_clks / with_clks if real_clks else 0
             win_no_clk_rate = win_no_clks / with_no_clks if win_no_clks else 0
 
-            remain_budget_on_hour_rate = (budget / B) / ((23 - hour) / 23)
-
-            s_array = stand_scaler.fit_transform(np.array([remain_budget_on_hour_rate, ctr,
-                                                           win_clk_rate, win_no_clk_rate]).reshape(-1, 1))
-            s_t = torch.Tensor(s_array.flatten())
+            s_t = torch.Tensor([budget / B, ctr, win_clk_rate, win_no_clk_rate])
 
             bids += 1
             hour_bids[hour] += 1
 
-            action = rl_model.choose_best_action(s_t.unsqueeze(0).to(device))
+            action = rl_model.choose_action(s_t.unsqueeze(0).to(device))
             bid_price = int(actions[action] * ctr / origin_ctr)
             bid_price = bid_price if bid_price <= 300 else 300
 
