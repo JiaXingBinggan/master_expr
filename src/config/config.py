@@ -56,28 +56,28 @@ def init_parser(campaign_id):
     parser.add_argument('--save_log_dir', default='../main/logs/')
     parser.add_argument('--seed', type=int, default=1)
 
-    parser.add_argument('--sample_type', default='down', help='all, down, rand')
+    parser.add_argument('--sample_type', default='all', help='all, down, rand')
 
     # for ensemble
-    parser.add_argument('--ensemble_nums', type=int, default=7, help='3,5,7')
+    parser.add_argument('--ensemble_nums', type=int, default=5, help='3,5,7')
     parser.add_argument('--ensemble_models', default='LR,FM,FNN,IPNN,DCN')
 
     # for RL training
     parser.add_argument('--rl_model_name', default='H_RL_CTR')
     parser.add_argument('--init_lr_a', type=float, default=3e-4)
     parser.add_argument('--init_lr_c', type=float, default=3e-4)
-    parser.add_argument('--neuron_nums', type=list, default=[32, 64, 16])
-    parser.add_argument('--tau', type=float, default=0.0005)
+    parser.add_argument('--neuron_nums', type=list, default=[64, 128, 32]) # [128], [128, 64], [64, 128, 32]
+    parser.add_argument('--tau', type=float, default=0.001)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
-    parser.add_argument('--rl_batch_size', type=int, default=64)
-    parser.add_argument('--rl_iter_size', type=int, default=10)
+    parser.add_argument('--rl_batch_size', type=int, default=32)
+    parser.add_argument('--rl_iter_size', type=int, default=1)
     parser.add_argument('--rl_train_iters', type=int, default=128)
     parser.add_argument('--rl_gen_batch_size', type=int, default=4096*128)
-    parser.add_argument('--memory_size', type=int, default=500000) # 感觉需要再调调
+    parser.add_argument('--memory_size', type=int, default=50000) # 感觉需要再调调,100000
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
-    parser.add_argument('--run_steps', type=float, default=1e6)
-    parser.add_argument('--stop_steps', type=float, default=2e6)
+    parser.add_argument('--run_steps', type=float, default=1e5)
+    parser.add_argument('--stop_steps', type=float, default=2e5)
     parser.add_argument('--record_times', type=int, default=200)
     parser.add_argument('--rl_early_stop_iter', type=int, default=10)
 
@@ -87,9 +87,9 @@ def init_parser(campaign_id):
     if args.ensemble_nums == 3:
         args.ensemble_models = 'LR,FM,FNN'
     elif args.ensemble_nums == 5:
-        args.ensemble_models = 'LR,FM,DeepFM,DCN,AFM'
+        args.ensemble_models = 'LR,FM,FNN,DeepFM,AFM'
     elif args.ensemble_nums == 7:
-        args.ensemble_models = 'LR,FM,FNN,DeepFM,W&D,IPNN,DCN,AFM'
+        args.ensemble_models = 'LR,FM,FNN,DeepFM,IPNN,DCN,AFM'
 
     # 设置随机数种子
     setup_seed(args.seed)
