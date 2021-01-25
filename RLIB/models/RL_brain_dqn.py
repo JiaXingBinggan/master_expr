@@ -125,8 +125,7 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            print(lim)
-            layer.weight.data.uniform_(-lim, lim)
+            layer.weight.data.uniform_(-0.003, 0.003)
             layer.bias.data.fill_(0)
 
 
@@ -222,7 +221,7 @@ class DQN():
 
         self.input_dims = 4
 
-        self.memory = torch.zeros((self.memory_size, self.input_dims * 2 + 3)).to(device)  # 状态的特征数*2加上动作和奖励
+        self.memory = np.zeros((self.memory_size, self.input_dims * 2 + 3))  # 状态的特征数*2加上动作和奖励
 
         self.agent = PolicyNet(self.input_dims, action_nums, self.neuron_nums).to(self.device)
         self.agent_ = PolicyNet(self.input_dims, action_nums, self.neuron_nums).to(self.device)
@@ -247,6 +246,7 @@ class DQN():
             if random.uniform(0, 1) > self.epsilon:
                 action = random.sample(range(self.action_nums), 1)[0]
             else:
+                state = torch.tensor(state).unsqueeze(0).to(self.device)
                 action = torch.argmax(self.agent.evaluate(state), dim=-1).item()
 
         return action
@@ -261,7 +261,7 @@ class DQN():
     def learn(self):
         self.learn_iter += 1
 
-        if self.learn_iter % self.replace_iter:
+        if self.learn_iter % self.replace_iter == 0:
             self.agent_.load_state_dict(self.agent.state_dict())
 
         self.agent.train()
@@ -274,7 +274,7 @@ class DQN():
         else:
             sample_index = random.sample(range(self.memory_counter), self.batch_size)
 
-        batch_memory = self.memory[sample_index, :]
+        batch_memory = torch.tensor(self.memory[sample_index, :]).float().to(self.device)
 
         b_s = batch_memory[:, :self.input_dims]
         b_s_ = batch_memory[:,

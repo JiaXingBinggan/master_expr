@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from src.config import config
 from torch.autograd import Variable
+from torch.distributions import Categorical
 import datetime
 def weight_init(layers):
     # source: The other layers were initialized from uniform distributions
@@ -114,8 +115,8 @@ class PolicyGradient:
         self.policy_net.eval()
         torch.cuda.empty_cache()
         with torch.no_grad():
-            prob_weights = self.policy_net.forward(state).cpu().numpy()
-            action = np.random.choice(range(self.action_nums), p=prob_weights.ravel())
+            prob_weights = Categorical(self.policy_net.forward(state))
+            action = prob_weights.sample()
 
         return action
 

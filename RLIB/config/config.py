@@ -24,11 +24,11 @@ def init_parser(campaign_id):
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi, avazu')
     parser.add_argument('--campaign_id', default='1458/', help='1458, 3358, 3386, 3427, 3476, avazu')
     parser.add_argument('--ctr_model_name', default='LR', help='LR,FM,FNN...')
-    parser.add_argument('--episodes', type=int, default=2)
+    parser.add_argument('--episodes', type=int, default=100)
     parser.add_argument('--model_name', default='RLIB')
     parser.add_argument('--neuron_nums', default=[128, 64])
-    parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--memory_size', type=float, default=5000000)
+    parser.add_argument('--lr', type=float, default=3e-4)
+    parser.add_argument('--memory_size', type=float, default=1000000)
     parser.add_argument('--rl_batch_size', type=int, default=32)
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--save_param_dir', default='../models/model_params/')
@@ -42,7 +42,7 @@ def init_parser(campaign_id):
     # for ctr prediction
     parser.add_argument('--batch_size', type=int, default=1024)
     parser.add_argument('--epoch', type=int, default=100)
-    parser.add_argument('--learning_rate', type=float, default=1e-3)
+    parser.add_argument('--learning_rate', type=float, default=3e-4)
     parser.add_argument('--early_stop_type', default='loss', help='auc, loss')
     parser.add_argument('--early_stop_iter', type=int, default=5)
     parser.add_argument('--loss_epsilon', type=float, default=1e-6)
@@ -53,7 +53,7 @@ def init_parser(campaign_id):
     parser.add_argument('--data_ctr_index', type=int, default=1)
     parser.add_argument('--data_clk_index', type=int, default=2)
     parser.add_argument('--budget', type=float, default=16e6)
-    parser.add_argument('--budget_para', type=list, default=[1/1], help='1,2,4,8')
+    parser.add_argument('--budget_para', type=list, default=[1/8], help='1,2,4,8')
 
     parser.add_argument('--action_nums', type=int, default=300)
 
