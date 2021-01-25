@@ -180,7 +180,7 @@ def get_dataset(args):
 '''
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr = get_dataset(args)
@@ -332,7 +332,7 @@ if __name__ == '__main__':
                 lamda = lamda * (1 + action_space[action])
                 tmp_lamda = lamda
 
-                Lamda = Lamda * (1 + action_space[action])
+                # Lamda = Lamda * (1 + action_space[action])
 
                 bid_datas = generate_bid_price((hour_datas[:, ctr_index] * lamda))
                 res_ = bid_main(bid_datas, hour_datas, budget)
@@ -343,7 +343,7 @@ if __name__ == '__main__':
                 budget -= res_[4]
 
                 left_frac_ratio = (96 - (t + 1))
-                if not left_frac_ratio or (budget <= 0):
+                if (not left_frac_ratio) or (budget <= 0):
                     done = 1
 
                 # state: time_steps, remain_b, left regulation times for lambda, (b_t - b_t-1) / b_t-1, cpm_t, wr_t,
@@ -385,11 +385,11 @@ if __name__ == '__main__':
 
     train_record_df = pd.DataFrame(data=ep_train_records,
                                    columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'revenue', 'loss'])
-    train_record_df.to_csv(submission_path + 'fab_train_records_' + str(args.budget_para[0]) + '.csv', index=None)
+    train_record_df.to_csv(submission_path + 'drlb_train_records_' + str(args.budget_para[0]) + '.csv', index=None)
 
     test_record_df = pd.DataFrame(data=ep_test_records,
                                   columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'revenue'])
-    test_record_df.to_csv(submission_path + 'fab_test_records_' + str(args.budget_para[0]) + '.csv', index=None)
+    test_record_df.to_csv(submission_path + 'drlb_test_records_' + str(args.budget_para[0]) + '.csv', index=None)
 
     test_action_df = pd.DataFrame(data=ep_test_actions)
-    test_action_df.to_csv(submission_path + 'fab_test_actions_' + str(args.budget_para[0]) + '.csv')
+    test_action_df.to_csv(submission_path + 'drlb_test_actions_' + str(args.budget_para[0]) + '.csv')

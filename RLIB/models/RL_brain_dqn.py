@@ -125,25 +125,24 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(-lim, lim)
+            layer.weight.data.uniform_(-0.003, 0.003)
             layer.bias.data.fill_(0)
 
 
 class PolicyNet(nn.Module):
-    def __init__(self, input_dims, action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(PolicyNet, self).__init__()
         self.input_dims = input_dims
         self.action_nums = action_nums
+        self.neuron_nums= neuron_nums
 
         deep_input_dims = self.input_dims
         # self.bn_input = nn.BatchNorm1d(deep_input_dims)
         # self.bn_input.weight.data.fill_(1)
         # self.bn_input.bias.data.fill_(0)
 
-        neuron_nums = [128]
-
         self.layers = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             self.layers.append(nn.ReLU())
             deep_input_dims = neuron_num
@@ -196,6 +195,7 @@ def onehot_from_logits(logits, eps=0.0):
 class DQN():
     def __init__(
             self,
+            neuron_nums,
             action_nums=2,
             lr=1e-3,
             reward_decay=1.0,
@@ -204,6 +204,7 @@ class DQN():
             random_seed=1,
             device='cuda:0',
     ):
+        self.neuron_nums = neuron_nums
         self.action_nums = action_nums
         self.lr = lr
         self.gamma = reward_decay
@@ -220,10 +221,10 @@ class DQN():
 
         self.input_dims = 4
 
-        self.memory = Memory(self.memory_size, self.input_dims * 2 + 3, self.device)
+        self.memory = np.zeros((self.memory_size, self.input_dims * 2 + 3))  # 状态的特征数*2加上动作和奖励
 
-        self.agent = PolicyNet(self.input_dims, action_nums).to(self.device)
-        self.agent_ = PolicyNet(self.input_dims, action_nums).to(self.device)
+        self.agent = PolicyNet(self.input_dims, action_nums, self.neuron_nums).to(self.device)
+        self.agent_ = PolicyNet(self.input_dims, action_nums, self.neuron_nums).to(self.device)
         self.agent_.load_state_dict(self.agent.state_dict())
 
         # 优化器
@@ -232,24 +233,20 @@ class DQN():
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.epsilon = 0.9
+        self.epsilon_max, self.epsilon_min = 0.9, 0.1
 
-    def store_transition(self, transitions):  # 所有的值都应该弄成float
-        if torch.max(self.memory.prioritys_) == 0.:
-            td_errors = torch.cat(
-                [torch.ones(size=[len(transitions), 1]).to(self.device), transitions[:, -1].view(-1, 1)], dim=-1).detach()
-        else:
-            td_errors = torch.cat(
-                [torch.max(self.memory.prioritys_).expand_as(torch.ones(size=[len(transitions), 1])).to(self.device),
-                 transitions[:, -1].view(-1, 1)], dim=-1).detach()
+    def store_transition(self, transition):  # 所有的值都应该弄成float
+        index = self.memory_counter % self.memory_size
+        self.memory[index, :] = transition  # 替换
+        self.memory_counter += 1
 
-        self.memory.add(td_errors, transitions.detach())
-
-    def choose_action(self, state, epsilon):
-        self.agent.train()
+    def choose_action(self, state):
+        self.agent.eval()
         with torch.no_grad():
-            if random.uniform(0, 1) > epsilon:
+            if random.uniform(0, 1) > self.epsilon:
                 action = random.sample(range(self.action_nums), 1)[0]
             else:
+                state = torch.tensor(state).unsqueeze(0).to(self.device)
                 action = torch.argmax(self.agent.evaluate(state), dim=-1).item()
 
         return action
@@ -264,26 +261,25 @@ class DQN():
     def learn(self):
         self.learn_iter += 1
 
-        if self.learn_iter % self.replace_iter:
+        if self.learn_iter % self.replace_iter == 0:
             self.agent_.load_state_dict(self.agent.state_dict())
 
         self.agent.train()
         self.agent_.train()
 
         # sample
-        choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
-        # if self.memory.memory_counter > self.memory_size:
-        #     # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
-        #     sample_index = random.sample(range(self.memory_size), self.batch_size)
-        # else:
-        #     sample_index = random.sample(range(self.memory.memory_counter), self.batch_size)
-        #
-        # batch_memory = self.memory.memory[sample_index, :]
+        if self.memory_counter > self.memory_size:
+            # replacement 代表的意思是抽样之后还放不放回去，如果是False的话，那么出来的三个数都不一样，如果是True的话， 有可能会出现重复的，因为前面的抽的放回去了
+            sample_index = random.sample(range(self.memory_size), self.batch_size)
+        else:
+            sample_index = random.sample(range(self.memory_counter), self.batch_size)
+
+        batch_memory = torch.tensor(self.memory[sample_index, :]).float().to(self.device)
 
         b_s = batch_memory[:, :self.input_dims]
-        b_a = batch_memory[:, self.input_dims: self.input_dims + 1].long()
         b_s_ = batch_memory[:,
-                self.input_dims + 1: self.input_dims * 2 + 1]
+                self.input_dims: self.input_dims * 2]
+        b_a = batch_memory[:, -3].unsqueeze(1).long()
         b_done = batch_memory[:, -2].unsqueeze(1)
         b_r = batch_memory[:, -1].unsqueeze(1)
 
@@ -292,12 +288,8 @@ class DQN():
 
         q_target = b_r + self.gamma * torch.mul(q_next.max(1)[0].view(self.batch_size, 1), b_done)
 
-        td_errors = q_target - q_eval
-
-        self.memory.batch_update(choose_idx, td_errors)
-
         # 训练eval_net
-        loss = (ISweights * F.mse_loss(q_eval, q_target, reduction='none')).mean()
+        loss = self.loss_func(q_eval, q_target)
 
         self.optimizer.zero_grad()
         loss.backward()
