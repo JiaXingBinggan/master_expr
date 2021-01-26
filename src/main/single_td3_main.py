@@ -30,10 +30,10 @@ def setup_seed(seed):
     torch.backends.cudnn.deterministic = True
 
 
-def get_model(action_nums, init_lr_a, init_lr_c, train_batch_size, memory_size, random_seed, device):
-    RL_model = td3_model.TD3_Model(action_nums=action_nums, lr_A=init_lr_a, lr_C=init_lr_c,
-                                          batch_size=train_batch_size,
-                                          memory_size=memory_size, random_seed=random_seed, device=device)
+def get_model(action_nums, args, device):
+    RL_model = td3_model.TD3_Model(action_nums=action_nums, lr_A=args.init_lr_a, lr_C=args.init_lr_c,
+                                          batch_size=args.rl_batch_size,
+                                          memory_size=args.memory_size, random_seed=args.seed, device=device)
 
     return RL_model
 
@@ -45,13 +45,12 @@ def generate_preds(pretrain_y_preds, ensemble_c_actions,
 
     with_clk_indexs = (labels == 1).nonzero()[:, 0]
     without_clk_indexs = (labels == 0).nonzero()[:, 0]
-    print(with_clk_indexs)
 
     basic_rewards = torch.ones_like(labels).float()
 
     with_clk_rewards = torch.where(
         model_y_preds[with_clk_indexs] > pretrain_y_pred_means[with_clk_indexs],
-        basic_rewards[with_clk_indexs] * 10,
+        basic_rewards[with_clk_indexs] * 1,
         basic_rewards[with_clk_indexs] * -1
     )
 
@@ -175,7 +174,7 @@ def get_dataset(args):
     return train_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     args.rl_model_name = 'S_RL_CTR'
     train_data, test_data = get_dataset(args)
@@ -206,6 +205,7 @@ if __name__ == '__main__':
 
     logger.info(campaign_id)
     logger.info('RL model ' + args.rl_model_name + ' has been training')
+    logger.info(args)
 
     test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
     test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
@@ -214,19 +214,13 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    gap = 5000
+    gap = args.run_steps // args.record_times
 
     data_len = len(train_data)
 
-    rl_model = get_model(model_dict_len, args.init_lr_a, args.init_lr_c,
-                     args.rl_batch_size,
-                     args.memory_size, args.seed, device)
-
-    loss = nn.BCELoss()
+    rl_model = get_model(model_dict_len, args, device)
 
     val_aucs = []
-
-    exploration_rate = args.init_exploration_rate
 
     val_rewards_records = []
     timesteps = []
@@ -254,6 +248,7 @@ if __name__ == '__main__':
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
     train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
+    record_list = []
 
     while intime_steps <= args.stop_steps:
         batchs = train_batch_gen.__next__()
@@ -276,21 +271,14 @@ if __name__ == '__main__':
         rl_model.store_transition(transitions)
 
         if intime_steps >= args.rl_batch_size:
-            if intime_steps % gap == 0:
-            # rl_model.memory.beta = min(rl_model.memory.beta_max,
-            #                           intime_steps *
-            #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
-
-                for _ in range(128):
-                    critic_loss = rl_model.learn()
-
-                    # rl_model.memory.beta = min(rl_model.memory.beta_max,
-                    #                           intime_steps *
-                    #                           (rl_model.memory.beta_max - rl_model.memory.beta_min) / (args.run_steps * 0.8))
-                    tmp_train_ctritics = critic_loss
+            if intime_steps % 10 == 0:
+                critic_loss = rl_model.learn()
+                tmp_train_ctritics = critic_loss
 
         if intime_steps % gap == 0:
             auc, predicts, test_rewards, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
+            record_list = [auc, predicts, prob_weights]
+
             logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, [{}s]'.format(
                 args.rl_model_name, intime_steps, auc, test_rewards, (datetime.datetime.now() - train_start_time).seconds))
             val_rewards_records.append(test_rewards)
@@ -322,22 +310,25 @@ if __name__ == '__main__':
     '''
     要不要早停
     '''
-    if is_early_stop:
-        test_rl_model = get_model(model_dict_len, args.init_lr_a, args.init_lr_c,
-                     args.rl_batch_size,
-                     args.memory_size, args.seed, device)
-        load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-                               early_stop_index) + '.pth'
+    # if is_early_stop:
+    #     test_rl_model = get_model(model_dict_len, args.init_lr_a, args.init_lr_c,
+    #                  args.rl_batch_size,
+    #                  args.memory_size, args.seed, device)
+    #     load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
+    #                            early_stop_index) + '.pth'
+    #
+    #     test_rl_model.Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
+    # else:
+    #     test_rl_model = rl_model
+    #
+    # test_predicts, test_auc, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
+    #                                                                       device)
 
-        test_rl_model.Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
-    else:
-        test_rl_model = rl_model
+    test_auc, test_predicts, test_prob_weights = \
+        record_list[0], record_list[1], record_list[2].cpu().numpy()
 
-    test_predicts, test_auc, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
-                                                                          device)
-
-    for i in range(args.rl_early_stop_iter):
-        os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
+    # for i in range(args.rl_early_stop_iter):
+    #     os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
 
     logger.info('Model {}, test auc {}, [{}s]'.format(args.rl_model_name,
                                                         test_auc, (datetime.datetime.now() - start_time).seconds))

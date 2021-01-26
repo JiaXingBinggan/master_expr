@@ -41,7 +41,7 @@ def init_parser(campaign_id):
     parser.add_argument('--campaign_id', default='2259/', help='1458, 3358, 3386, 3427, 3476, avazu')
     parser.add_argument('--model_name', default='LR', help='LR, FM, FFM, W&D, FNN, DeepFM, IPNN, OPNN, DCN, AFM')
     parser.add_argument('--latent_dims', default=10)
-    parser.add_argument('--epoch', type=int, default=100)
+    parser.add_argument('--epoch', type=int, default=1)
     parser.add_argument('--kfold', type=int, default=5)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--weight_decay', type=float, default=1e-5)
@@ -67,13 +67,13 @@ def init_parser(campaign_id):
     parser.add_argument('--init_lr_a', type=float, default=3e-4)
     parser.add_argument('--init_lr_c', type=float, default=3e-4)
     parser.add_argument('--neuron_nums', type=list, default=[64, 128, 32]) # [128], [128, 64], [64, 128, 32]
-    parser.add_argument('--tau', type=float, default=0.001)
+    parser.add_argument('--tau', type=float, default=0.0005)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
     parser.add_argument('--rl_batch_size', type=int, default=32)
     parser.add_argument('--rl_iter_size', type=int, default=1)
     parser.add_argument('--rl_train_iters', type=int, default=128)
     parser.add_argument('--rl_gen_batch_size', type=int, default=4096*128)
-    parser.add_argument('--memory_size', type=int, default=50000) # 感觉需要再调调,100000
+    parser.add_argument('--memory_size', type=int, default=10000) # 感觉需要再调调,100000
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
     parser.add_argument('--run_steps', type=float, default=1e5)
