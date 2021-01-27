@@ -10,9 +10,11 @@ import src.models.p_model as Model
 import src.models.Single_TD3_model_PER as td3_model
 import src.models.creat_data as Data
 from src.models.Feature_embedding import Feature_Embedding
+from torch.autograd import Variable
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.data
 
 from src.config import config
@@ -28,23 +30,57 @@ class Weight_Training(nn.Module):
         self.weight_dims = weight_dims
         self.neuron_nums = neuron_nums
 
+        self.bn_input = nn.BatchNorm1d(self.input_dims)
+        self.bn_input.weight.data.fill_(1)
+        self.bn_input.bias.data.zero_()
+
         deep_input_dims = self.input_dims
         self.layers = list()
         for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
+            # self.layers.append(nn.BatchNorm1d(deep_input_dims))
             self.layers.append(nn.ReLU())
             self.layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
         self.layers.append(nn.Linear(deep_input_dims, self.weight_dims))
-        self.layers.append(nn.Softmax(dim=-1))
+        self.layers[-1].weight.data.uniform_(-0.003, 0.003)
+        self.layers.append(nn.Tanh())
 
         self.mlp = nn.Sequential(*self.layers)
 
     def forward(self, input):
-        weights = self.mlp(input)
+        weights = self.mlp(self.bn_input(input))
 
         return weights
+
+def gumbel_softmax_sample(logits, temprature=1.0, hard=False, eps=1e-20, uniform_seed=1.0):
+    U = Variable(torch.FloatTensor(*logits.shape).uniform_().cuda(), requires_grad=False)
+    y = logits + -torch.log(-torch.log(U + eps) + eps)
+    y = F.softmax(y / temprature, dim=-1)
+
+    if hard:
+        y_hard = onehot_from_logits(y)
+        y = (y_hard - y).detach() + y
+
+    return y
+
+
+def onehot_from_logits(logits, eps=0.0):
+    """
+    Given batch of logits, return one-hot sample using epsilon greedy strategy
+    (based on given epsilon)
+    """
+    # get best (according to current policy) actions in one-hot form
+    argmax_acs = (logits == logits.max(1, keepdim=True)[0]).float()
+    if eps == 0.0:
+        return argmax_acs
+    # get random actions in one-hot form
+    rand_acs = Variable(torch.eye(logits.shape[1])[[np.random.choice(
+        range(logits.shape[1]), size=logits.shape[0])]], requires_grad=False)
+    # chooses between best and random actions using epsilon greedy
+    return torch.stack([argmax_acs[i] if r > eps else rand_acs[i] for i, r in
+                        enumerate(torch.rand(logits.shape[0]))])
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -68,11 +104,11 @@ def train(nn_model, loss, data_loader, optimizer, device):
     nn_model.train()
 
     for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
-        current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(
+        current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device) * 1e3, torch.unsqueeze(labels, 1).to(
             device)
 
-        weights = nn_model(current_pretrain_y_preds)
-        y = torch.sum(torch.mul(current_pretrain_y_preds, weights), dim=-1).view(-1, 1)
+        weights = torch.softmax(nn_model(current_pretrain_y_preds), dim=-1)
+        y = torch.sum(torch.mul(current_pretrain_y_preds / 1e3, weights), dim=-1).view(-1, 1)
 
         train_loss = loss(y, labels.float())
         nn_model.zero_grad()
@@ -94,12 +130,12 @@ def test(nn_model, loss, data_loader, device):
 
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
-            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(
+            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device) * 1e3, torch.unsqueeze(labels, 1).to(
                 device)
 
-            weights = nn_model(current_pretrain_y_preds)
+            weights = torch.softmax(nn_model(current_pretrain_y_preds), dim=-1)
 
-            y = torch.sum(torch.mul(current_pretrain_y_preds, weights), dim=-1).view(-1, 1)
+            y = torch.sum(torch.mul(current_pretrain_y_preds / 1e3, weights), dim=-1).view(-1, 1)
 
             test_loss = loss(y, labels.float())
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
@@ -172,6 +208,7 @@ def get_dataset(args):
 if __name__ == '__main__':
     campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
+    args.neuron_nums = [200, 300, 100]
     args.model_name = 'S_NN_CTR'
     train_data, test_data = get_dataset(args)
 
@@ -222,7 +259,7 @@ if __name__ == '__main__':
     train_start_time = datetime.datetime.now()
 
     train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
-    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
+    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, num_workers=8)
     record_list = []
 
     for epoch in range(args.epoch):

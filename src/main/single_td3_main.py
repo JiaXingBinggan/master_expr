@@ -31,7 +31,8 @@ def setup_seed(seed):
 
 
 def get_model(action_nums, args, device):
-    RL_model = td3_model.TD3_Model(action_nums=action_nums, lr_A=args.init_lr_a, lr_C=args.init_lr_c,
+    RL_model = td3_model.TD3_Model(neuron_nums=args.neuron_nums,
+                                   action_nums=action_nums, lr_A=args.init_lr_a, lr_C=args.init_lr_c,
                                           batch_size=args.rl_batch_size,
                                           memory_size=args.memory_size, random_seed=args.seed, device=device)
 
@@ -39,8 +40,7 @@ def get_model(action_nums, args, device):
 
 def generate_preds(pretrain_y_preds, ensemble_c_actions,
                    labels, device):
-
-    model_y_preds = torch.mul(ensemble_c_actions, pretrain_y_preds).mean(dim=-1).view(-1, 1)
+    model_y_preds = torch.mul(ensemble_c_actions, pretrain_y_preds / 1e2).mean(dim=-1).view(-1, 1)
     pretrain_y_pred_means = pretrain_y_preds.mean(dim=-1).view(-1, 1)
 
     with_clk_indexs = (labels == 1).nonzero()[:, 0]
@@ -65,7 +65,7 @@ def generate_preds(pretrain_y_preds, ensemble_c_actions,
 
     return_ctrs = torch.mul(ensemble_c_actions, pretrain_y_preds)
 
-    return model_y_preds, basic_rewards, return_ctrs
+    return model_y_preds, basic_rewards, return_ctrs * 1e2
 
 
 def test(rl_model, ensemble_nums, data_loader, device):
@@ -171,12 +171,13 @@ def get_dataset(args):
     train_data = pd.read_csv(datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
     test_data = pd.read_csv(datapath + 'test.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
 
-    return train_data, test_data
+    return train_data * 1e2, test_data * 1e2
 
 if __name__ == '__main__':
     campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     args.rl_model_name = 'S_RL_CTR'
+    args.neuron_nums = [128]
     train_data, test_data = get_dataset(args)
 
     # 设置随机数种子
@@ -214,8 +215,8 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    gap = args.run_steps // args.record_times
-
+    # gap = args.run_steps // args.record_times
+    gap = 10000
     data_len = len(train_data)
 
     rl_model = get_model(model_dict_len, args, device)
