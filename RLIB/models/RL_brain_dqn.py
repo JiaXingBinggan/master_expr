@@ -254,6 +254,7 @@ class DQN():
     def choose_best_action(self, state):
         self.agent.eval()
         with torch.no_grad():
+            state = torch.tensor(state).unsqueeze(0).to(self.device)
             action_values = self.agent.evaluate(state)
 
         return torch.argmax(action_values, dim=-1).item()

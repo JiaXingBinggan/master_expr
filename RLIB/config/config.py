@@ -37,7 +37,7 @@ def init_parser(campaign_id):
 
     parser.add_argument('--latent_dims', default=10)
 
-    parser.add_argument('--sample_type', default='all', help='all, rand')
+    parser.add_argument('--sample_type', default='rand', help='all, rand')
 
     # for ctr prediction
     parser.add_argument('--batch_size', type=int, default=1024)

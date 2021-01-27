@@ -254,7 +254,7 @@ def to_libsvm_encode(datapath, sample_type, time_frac_dict):
 def rand_sample(data_path):
     test_data = pd.read_csv(data_path + 'test.bid.all.csv')
 
-    sample_indexs = random.sample(range(len(test_data)), int(len(test_data) * 0.7))
+    sample_indexs = sorted(random.sample(range(len(test_data)), int(len(test_data) * 0.7)))
 
     test_all_sample_data = test_data.iloc[sample_indexs, :]
 
@@ -264,7 +264,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='1458/', help='1458, 3358, 3386, 3427')
+    parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)
@@ -282,24 +282,24 @@ if __name__ == '__main__':
             count += 1
         time_frac_dict.setdefault(i, hour_frac_dict)
 
-    if args.is_to_csv:
-        print('to csv')
-        day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
-        train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
-        test_indexs = day_indexs[day_indexs[:, 0] == 12][0]
-
-        origin_train_data = pd.read_csv(data_path + 'train.all.origin.csv')
-
-        train_data = origin_train_data.iloc[:train_indexs[1], :] # 6-10
-        val_data = origin_train_data.iloc[train_indexs[1]: train_indexs[2] + 1, :] # 11
-        test_data = origin_train_data.iloc[train_indexs[2]:, :] # 12
-
-        train_data.to_csv(data_path + 'train.bid.all.csv', index=None)
-        val_data.to_csv(data_path + 'val.bid.all.csv', index=None)
-        test_data.to_csv(data_path + 'test.bid.all.csv', index=None)
-
-    # no sample
-    to_libsvm_encode(data_path, 'all', time_frac_dict)
+    # if args.is_to_csv:
+    #     print('to csv')
+    #     day_indexs = pd.read_csv(data_path + 'day_indexs.csv', header=None).values.astype(int)
+    #     train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
+    #     test_indexs = day_indexs[day_indexs[:, 0] == 12][0]
+    #
+    #     origin_train_data = pd.read_csv(data_path + 'train.all.origin.csv')
+    #
+    #     train_data = origin_train_data.iloc[:train_indexs[1], :] # 6-10
+    #     val_data = origin_train_data.iloc[train_indexs[1]: train_indexs[2] + 1, :] # 11
+    #     test_data = origin_train_data.iloc[train_indexs[2]:, :] # 12
+    #
+    #     train_data.to_csv(data_path + 'train.bid.all.csv', index=None)
+    #     val_data.to_csv(data_path + 'val.bid.all.csv', index=None)
+    #     test_data.to_csv(data_path + 'test.bid.all.csv', index=None)
+    #
+    # # no sample
+    # to_libsvm_encode(data_path, 'all', time_frac_dict)
 
     # rand denotes random sample
 

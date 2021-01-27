@@ -30,8 +30,10 @@ def setup_seed(seed):
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
 
+
 def bidding(bid):
     return int(bid if bid <= 300 else 300)
+
 
 def generate_bid_price(datas):
     '''
@@ -117,6 +119,7 @@ def bid_main(bid_prices, imp_datas, budget):
 
     return win_clks, real_clks, bids, imps, cost
 
+
 def get_ctr_model(model_name, feature_nums, field_nums, latent_dims):
     if model_name == 'LR':
         return Model.LR(feature_nums)
@@ -149,6 +152,7 @@ def get_model(action_nums, args, device):
                         device=device)
 
     return RL_model
+
 
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
@@ -217,21 +221,6 @@ def get_next_batch(batch):
     return batch.__next__()
 
 
-def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate):
-    if bid_price >= mprice:
-        if clk:
-            r = ecpc * ctr * (win_clk_rate / win_no_clk_rate) if win_no_clk_rate else ecpc * ctr - mprice
-        else:
-            r = - mprice / remain_budget_on_hour_rate if remain_budget_on_hour_rate else mprice
-    else:
-        if clk:
-            r = - ecpc * ctr * (1 - win_clk_rate)
-        else:
-            r = mprice / win_no_clk_rate if win_no_clk_rate else mprice
-
-    return r / 1000
-
-
 '''
 1458
 437520 447493
@@ -256,9 +245,9 @@ def reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_
 '''
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-
+    args.model_name = 'RLIB_CLK'
     train_data, test_data, auc_ctr_threshold, expect_auc_num, ecpc, origin_ctr \
         = get_dataset(args)
 
@@ -293,9 +282,9 @@ if __name__ == '__main__':
     logger.info(campaign_id)
     logger.info('RL model ' + args.model_name + ' has been training')
 
-    actions = np.arange(-0.5, 0.5, 3e-2)
+    actions = np.arange(-0.99, 0.99, 3e-2)
 
-    #actions = np.array(list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10)))
+    # actions = np.array(list(np.arange(2, 20, 2)) + list(np.arange(20, 100, 5)) + list(np.arange(100, 301, 10)))
 
     rl_model = get_model(actions.shape[0], args, device)
     B = args.budget * args.budget_para[0]
@@ -352,7 +341,7 @@ if __name__ == '__main__':
                 bids += 1
                 action = rl_model.choose_action(s_t)
                 bid_price = int((ctr * hb_base / origin_ctr) / (1 + actions[action]))
-                #bid_price = actions[action]
+                # bid_price = actions[action]
                 bid_price = bid_price if bid_price <= 300 else 300
 
                 if bid_price >= mprice:
@@ -368,7 +357,7 @@ if __name__ == '__main__':
 
                 remain_budget_on_hour_rate_ = (budget / B) / ((23 - hour) / 23) if hour < 23 else budget / B
 
-                r_t = reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate_)
+                r_t = clk
 
                 if (t + 1 == len(train_data)) or (budget <= 0):
                     done = 1.0
@@ -382,8 +371,8 @@ if __name__ == '__main__':
                         next_win_clk_rate = win_clks / with_clks if with_clks else 0
                         next_win_no_clk_rate = win_no_clks / (with_no_clks + 1)
                     s_t_ = [remain_budget_on_hour_rate_, next_data[data_ctr_index],
-                                         next_win_clk_rate,
-                                         next_win_no_clk_rate]
+                            next_win_clk_rate,
+                            next_win_no_clk_rate]
 
                 transitions = np.array(s_t + s_t_ + [action, done, r_t])
 
@@ -428,6 +417,7 @@ if __name__ == '__main__':
                 bids += 1
 
                 action = rl_model.choose_action(s_t)
+
                 bid_price = int((ctr * hb_base / origin_ctr) / (1 + actions[action]))
                 # bid_price = actions[action]
                 # bid_price = float(actions[action] * ctr / origin_ctr)
@@ -448,37 +438,27 @@ if __name__ == '__main__':
 
                 remain_budget_on_hour_rate_ = (budget / B) / ((23 - hour) / 23) if hour < 23 else budget / B
 
-                r_t = reward_func(bid_price, mprice, win_clk_rate, win_no_clk_rate, remain_budget_on_hour_rate_)
+                r_t = clk
                 total_reward += r_t
         test_bid_datas[:, ep: ep + 1] = bid_datas
 
-        logger.info('test\t{}\t{}\t{}\t{}\t{}\t{}\t[{}s]'.format(clks, real_clks, bids, imps, cost, total_reward  / len(test_data),
+        logger.info('test\t{}\t{}\t{}\t{}\t{}\t{}\t[{}s]'.format(clks, real_clks, bids, imps, cost,
+                                                                 total_reward,
                                                                  (datetime.datetime.now() - start_time).seconds))
-        test_records.append([ep, clks, real_clks, bids, imps, cost, total_reward / len(test_data)])
+        test_records.append([ep, clks, real_clks, bids, imps, cost, total_reward])
 
-    train_records_df = pd.DataFrame(data=train_records, 
+    train_records_df = pd.DataFrame(data=train_records,
                                     columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'total_loss'])
     train_records_df.to_csv(submission_path + 'train_records_' + args.sample_type + str(args.budget_para[0]) + '.csv',
                             index=None)
-    
+
     test_records_df = pd.DataFrame(data=test_records,
-                                    columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'total_reward'])
+                                   columns=['ep', 'clks', 'real_clks', 'bids', 'imps', 'cost', 'total_reward'])
     test_records_df.to_csv(submission_path + 'test_records_' + args.sample_type + str(args.budget_para[0]) + '.csv',
-                            index=None)
+                           index=None)
 
     test_bid_datas_df = pd.DataFrame(data=test_bid_datas)
     test_bid_datas_df.to_csv(submission_path + 'test_bid_datas_' + args.sample_type + str(args.budget_para[0]) + '.csv',
-                            index=None)
-
-
-
-
-
-
-
-
-
-
-
+                             index=None)
 
 
