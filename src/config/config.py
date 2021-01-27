@@ -50,7 +50,7 @@ def init_parser(campaign_id):
     parser.add_argument('--loss_epsilon', type=float, default=1e-6)
     parser.add_argument('--auc_epsilon', type=float, default=1e-5)
     parser.add_argument('--batch_size', type=int, default=1024)
-    parser.add_argument('--test_batch_size', type=int, default=4096)
+    parser.add_argument('--test_batch_size', type=int, default=4096 * 128)
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--save_param_dir', default='../models/model_params/')
     parser.add_argument('--save_log_dir', default='../main/logs/')
@@ -66,14 +66,15 @@ def init_parser(campaign_id):
     parser.add_argument('--rl_model_name', default='H_RL_CTR')
     parser.add_argument('--init_lr_a', type=float, default=3e-4)
     parser.add_argument('--init_lr_c', type=float, default=3e-4)
-    parser.add_argument('--neuron_nums', type=list, default=[64, 128, 32]) # [128], [128, 64], [64, 128, 32]
-    parser.add_argument('--tau', type=float, default=0.001)
+    parser.add_argument('--neuron_nums', type=list, default=[64, 128, 32]) # 1458 and 2259 [128], [128, 64], [64, 128, 32]
+    # 3386 [64], [64, 32], [32, 64, 16]
+    parser.add_argument('--tau', type=float, default=0.0005)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
     parser.add_argument('--rl_batch_size', type=int, default=32)
     parser.add_argument('--rl_iter_size', type=int, default=1)
     parser.add_argument('--rl_train_iters', type=int, default=128)
-    parser.add_argument('--rl_gen_batch_size', type=int, default=4096*128)
-    parser.add_argument('--memory_size', type=int, default=50000) # 感觉需要再调调,100000
+    parser.add_argument('--rl_gen_batch_size', type=int, default=4096 * 128)
+    parser.add_argument('--memory_size', type=int, default=10000) # 感觉需要再调调,100000
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
     parser.add_argument('--run_steps', type=float, default=1e5)

@@ -61,6 +61,7 @@ def submission(model, data_loader, device):
 
     return predicts
 
+
 def get_dataset(args):
     data_path = args.data_path + args.dataset_name + args.campaign_id
 
@@ -70,9 +71,8 @@ def get_dataset(args):
     return test_fm
 
 
-
 if __name__ == '__main__':
-    campaign_id = '3358/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '2997/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     test_data = get_dataset(args)
 

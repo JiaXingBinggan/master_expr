@@ -268,13 +268,13 @@ def get_dataset(args):
     datapath = args.data_path + args.dataset_name + args.campaign_id
 
     columns = ['label'] + args.ensemble_models.split(',')
-    train_data = pd.read_csv(datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
+    train_data = pd.read_csv(  datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
     test_data = pd.read_csv(datapath + 'test.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
 
     return train_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '3358/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, test_data = get_dataset(args)
@@ -419,7 +419,6 @@ if __name__ == '__main__':
 
         if intime_steps >= args.rl_batch_size:
             if intime_steps % 10 == 0:
-            # for _ in range(1):
                 critic_loss = rl_model.learn()
                 tmp_train_ctritics = critic_loss
 

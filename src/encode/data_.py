@@ -51,129 +51,33 @@ def data_to_csv(datapath, is_to_csv):
     day_to_weekday = {4: '6', 5: '7', 6: '8', 0: '9', 1: '10', 2: '11', 3: '12'}
     train_data = pd.read_csv(data_path)
     train_data.iloc[:, 1] = train_data.iloc[:, 1].astype(int)
-    print('###### separate datas from train day ######\n')
-    day_data_indexs = []
-    for key in day_to_weekday.keys():
-        day_datas = train_data[train_data.iloc[:, 1] == key]
-        day_indexs = day_datas.index
-        day_data_indexs.append([int(day_to_weekday[key]), int(day_indexs[0]), int(day_indexs[-1])])
+    if datapath.split('/')[-2] == '2259' or datapath.split('/')[-2] == '2997':
+        train_len = len(train_data)
+        train_split = int(train_len * 0.8)
+        train_fm = train_data.iloc[:train_split, :]
+        val_fm = train_data.iloc[(train_len - train_split):, :]
 
-    day_data_indexs_df = pd.DataFrame(data=day_data_indexs)
-    day_data_indexs_df.to_csv(datapath + 'day_indexs.csv', index=None, header=None)
+        train_fm.to_csv(datapath + 'train.ctr.all.csv', index=None)
+        val_fm.to_csv(datapath + 'val.ctr.all.csv', index=None)
+    else:
+        print('###### separate datas from train day ######\n')
+        day_data_indexs = []
+        for key in day_to_weekday.keys():
+            day_datas = train_data[train_data.iloc[:, 1] == key]
+            day_indexs = day_datas.index
+            day_data_indexs.append([int(day_to_weekday[key]), int(day_indexs[0]), int(day_indexs[-1])])
 
-    day_indexs = np.array(day_data_indexs)
-    train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
+        day_data_indexs_df = pd.DataFrame(data=day_data_indexs)
+        day_data_indexs_df.to_csv(datapath + 'day_indexs.csv', index=None, header=None)
 
-    train_fm = train_data.iloc[:train_indexs[1], :]
-    val_fm = train_data.iloc[train_indexs[1]:, :]
+        day_indexs = np.array(day_data_indexs)
+        train_indexs = day_indexs[day_indexs[:, 0] == 11][0]
 
-    train_fm.to_csv(datapath + 'train.ctr.all.csv', index=None)
-    val_fm.to_csv(datapath + 'val.ctr.all.csv', index=None)
+        train_fm = train_data.iloc[:train_indexs[1], :]
+        val_fm = train_data.iloc[train_indexs[1]:, :]
 
-# def to_libsvm_encode(datapath, sample_type):
-#     train_path = datapath + 'train.' + sample_type + '.csv'
-#     train_encode = datapath + 'train.ctr.' + sample_type + '.txt'
-#     test_path = datapath + 'test.all.csv'
-#     test_encode = datapath + 'test.ctr.' + sample_type + '.txt'
-#     feature_index = datapath + 'featindex.ctr.' + sample_type + '.txt'
-#
-#     field = ['hour', 'weekday', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
-#              'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser', 'usertag']
-#
-#     table = collections.defaultdict(lambda: 0)
-#
-#     # 为特征名建立编号, filed
-#     def field_index(x):
-#         index = field.index(x)
-#         return index
-#
-#     def getIndices(key):
-#         indices = table.get(key)
-#         if indices is None:
-#             indices = len(table)
-#             table[key] = indices
-#         return indices
-#
-#     feature_indices = set()
-#     with open(train_encode, 'w') as outfile:
-#         for e, row in enumerate(DictReader(open(train_path)), start=1):
-#             features = []
-#             for k, v in row.items():
-#                 if k in field:
-#                     if len(v) > 0:
-#                         if k == 'usertag':
-#                             v = '-'.join(v.split(',')[:3])
-#                         elif k == 'slotprice':
-#                             price = int(v)
-#                             if price > 100:
-#                                 v = "101+"
-#                             elif price > 50:
-#                                 v = "51-100"
-#                             elif price > 10:
-#                                 v = "11-50"
-#                             elif price > 0:
-#                                 v = "1-10"
-#                             else:
-#                                 v = "0"
-#                         kv = k + '_' + v
-#                         features.append('{0}'.format(getIndices(kv)))
-#                         feature_indices.add(kv + '\t' + str(getIndices(kv)))
-#                     else:
-#                         kv = k + '_' + 'other'
-#                         features.append('{0}'.format(getIndices(kv)))
-#
-#             if e % 100000 == 0:
-#                 print(datetime.now(), 'creating train.txt...', e)
-#
-#             outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
-#
-#     with open(test_encode, 'w') as outfile:
-#         for e, row in enumerate(DictReader(open(test_path)), start=1):
-#             features = []
-#             for k, v in row.items():
-#                 if k in field:
-#                     if len(v) > 0:
-#                         if k == 'usertag':
-#                             v = '-'.join(v.split(',')[:3])
-#                         elif k == 'slotprice':
-#                             price = int(v)
-#                             if price > 100:
-#                                 v = "101+"
-#                             elif price > 50:
-#                                 v = "51-100"
-#                             elif price > 10:
-#                                 v = "11-50"
-#                             elif price > 0:
-#                                 v = "1-10"
-#                             else:
-#                                 v = "0"
-#                         kv = k + '_' + v
-#                         indices = table.get(kv)
-#                         if indices is None:
-#                             kv = k + '_' + 'other'
-#                             features.append('{0}'.format(getIndices(kv)))
-#                         else:
-#                             features.append('{0}'.format(getIndices(kv)))
-#                     else:
-#                         kv = k + '_' + 'other'
-#                         features.append('{0}'.format(getIndices(kv)))
-#
-#             if e % 100000 == 0:
-#                 print(datetime.now(), 'creating test.txt...', e)
-#
-#             outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
-#
-#     featvalue = sorted(table.items(), key=operator.itemgetter(1))
-#     fo = open(feature_index, 'w')
-#     fo.write(str(featvalue[-1][1]) + '\n')
-#     for t, fv in enumerate(featvalue, start=1):
-#         if t > len(field):
-#             k = fv[0].split('_')[0]
-#             idx = field_index(k)
-#             fo.write(str(idx) + ':' + fv[0] + '\t' + str(fv[1]) + '\n')
-#         else:
-#             fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
-#     fo.close()
+        train_fm.to_csv(datapath + 'train.ctr.all.csv', index=None)
+        val_fm.to_csv(datapath + 'val.ctr.all.csv', index=None)
 
 def to_libsvm_encode(datapath, sample_type):
     print('###### to libsvm encode ######\n')
@@ -255,13 +159,13 @@ def to_libsvm_encode(datapath, sample_type):
             if feat not in featindex:
                 featindex[feat] = maxindex
                 maxindex += 1
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            featindex[feat] = maxindex
-            maxindex += 1
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     featindex[feat] = maxindex
+        #     maxindex += 1
 
     print('feature size: ' + str(maxindex))
     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
@@ -303,14 +207,14 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 
@@ -347,14 +251,14 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
 
     # indexing test
@@ -390,14 +294,14 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        # for tag in tags:
-        feat = str(col) + ':' + ''.join(tags)
-        if feat not in featindex:
-            feat = str(col) + ':other'
-        index = featindex[feat]
-        fo.write(',' + str(index))
+        # col = namecol["usertag"]
+        # tags = getTags(s[col])
+        # # for tag in tags:
+        # feat = str(col) + ':' + ''.join(tags)
+        # if feat not in featindex:
+        #     feat = str(col) + ':other'
+        # index = featindex[feat]
+        # fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 
@@ -461,7 +365,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3427/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='2997/', help='1458, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)

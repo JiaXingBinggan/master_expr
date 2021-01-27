@@ -129,10 +129,11 @@ def weight_init(layers):
             layer.bias.data.fill_(0)
 
 class Critic(nn.Module):
-    def __init__(self, input_dims, action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(Critic, self).__init__()
         self.input_dims = input_dims
         self.action_nums = action_nums
+        self.neuron_nums = neuron_nums
 
         deep_input_dims_1 = self.input_dims + self.action_nums
 
@@ -140,10 +141,8 @@ class Critic(nn.Module):
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.zero_()
 
-        neuron_nums = [32, 64, 16]
-
         self.layers_1 = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers_1.append(nn.Linear(deep_input_dims_1, neuron_num))
             # self.layers_1.append(nn.BatchNorm1d(neuron_num))
             self.layers_1.append(nn.ReLU())
@@ -156,7 +155,7 @@ class Critic(nn.Module):
 
         deep_input_dims_2 = self.input_dims + self.action_nums
         self.layers_2 = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers_2.append(nn.Linear(deep_input_dims_2, neuron_num))
             # self.layers_2.append(nn.BatchNorm1d(neuron_num))
             self.layers_2.append(nn.ReLU())
@@ -187,10 +186,11 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
-    def __init__(self, input_dims, action_nums):
+    def __init__(self, input_dims, action_nums, neuron_nums):
         super(Actor, self).__init__()
         self.input_dims = input_dims
         self.action_dims = action_nums
+        self.neuron_nums = neuron_nums
 
         self.bn_input = nn.BatchNorm1d(self.input_dims)
         self.bn_input.weight.data.fill_(1)
@@ -198,15 +198,13 @@ class Actor(nn.Module):
 
         deep_input_dims = self.input_dims
 
-        neuron_nums = [32, 64, 16]
         self.layers = list()
-        for neuron_num in neuron_nums:
+        for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
             # self.layers.append(nn.BatchNorm1d(neuron_num))
             self.layers.append(nn.ReLU())
-            self.layers.append(nn.Dropout(p=0.2))
+            # self.layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
-
 
         self.layers.append(nn.Linear(deep_input_dims, self.action_dims))
         weight_init([self.layers[-1]])
@@ -232,6 +230,7 @@ class Actor(nn.Module):
 class TD3_Model():
     def __init__(
             self,
+            neuron_nums,
             action_nums=1,
             lr_A=3e-4,
             lr_C=3e-4,
@@ -242,6 +241,7 @@ class TD3_Model():
             random_seed=1234,
             device='cuda:0',
     ):
+        self.neuron_nums = neuron_nums
         self.action_nums = action_nums
         self.lr_A = lr_A
         self.lr_C = lr_C
@@ -259,8 +259,8 @@ class TD3_Model():
 
         self.memory = Memory(self.memory_size, self.input_dims * 2 + self.action_nums + 1, self.device)
 
-        self.Actor = Actor(self.input_dims, self.action_nums).to(self.device)
-        self.Critic = Critic(self.input_dims, self.action_nums).to(self.device)
+        self.Actor = Actor(self.input_dims, self.action_nums, self.neuron_nums).to(self.device)
+        self.Critic = Critic(self.input_dims, self.action_nums, self.neuron_nums).to(self.device)
 
         self.Actor_ = copy.deepcopy(self.Actor)
         self.Critic_ = copy.deepcopy(self.Critic)
@@ -289,7 +289,9 @@ class TD3_Model():
         self.Actor.eval()
         with torch.no_grad():
             action_means = torch.clamp(self.Actor.act(state.to(self.device)), -1.0, 1.0)
-            res_actions = action_means + torch.randn_like(action_means) * 0.1
+
+            res_actions = action_means + torch.randn_like(action_means) * 0.5
+
         self.Actor.train()
 
         return res_actions,  torch.softmax(action_means, dim=-1)
@@ -333,7 +335,7 @@ class TD3_Model():
         with torch.no_grad():
             actions_means_next = self.Actor_.evaluate(b_s_)
             actions_means_next = torch.clamp(actions_means_next +
-                                             torch.clamp(torch.randn_like(actions_means_next) * 0.2, -0.5, 0.5),
+                                             torch.clamp(torch.randn_like(actions_means_next) * 1.0, -2.0, 2.0),
                                              -1.0, 1.0)
 
             q1_target, q2_target = \
