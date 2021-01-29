@@ -178,7 +178,7 @@ def get_dataset(args):
 
     # clk,ctr,mprice,hour,time_frac
     columns = ['clk', 'ctr', 'mprice', 'hour', 'time_frac']
-    train_data = pd.read_csv(data_path + 'train.bid.all.data')[columns]
+    train_data = pd.read_csv(data_path + 'train.bid.' + args.sample_type + '.data')[columns]
     test_data = pd.read_csv(data_path + 'test.bid.' + args.sample_type + '.data')[columns]
 
     train_data = train_data[['clk', 'ctr', 'mprice', 'hour']].values.astype(float)
@@ -192,7 +192,7 @@ def get_dataset(args):
 
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 3358, 3386, 3427
+    campaign_id = '3427/'  # 1458, 3358, 3386, 3427
     args = config.init_parser(campaign_id)
 
     train_data, test_data, ecpc, origin_ctr, avg_mprice = get_dataset(args)
