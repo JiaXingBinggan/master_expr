@@ -273,7 +273,7 @@ if __name__ == '__main__':
 
                     action = rl_model.choose_action(state.unsqueeze(0).to(device))
 
-                    test_actions.append(action_space[action])
+                    test_actions[t] = action_space[action]
 
                     lamda = lamda * (1 + action_space[action])
                     tmp_lamda = lamda

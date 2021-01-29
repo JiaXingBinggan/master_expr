@@ -121,7 +121,7 @@ def to_libsvm_encode(datapath, sample_type):
     def getTags(content):
         if content == '\n' or len(content) == 0:
             return ["null"]
-        return content.strip().split(',')[:5]
+        return content.strip().split(',')
 
     # initialize
     namecol = {}
@@ -159,13 +159,13 @@ def to_libsvm_encode(datapath, sample_type):
             if feat not in featindex:
                 featindex[feat] = maxindex
                 maxindex += 1
-        # col = namecol["usertag"]
-        # tags = getTags(s[col])
-        # # for tag in tags:
-        # feat = str(col) + ':' + ''.join(tags)
-        # if feat not in featindex:
-        #     featindex[feat] = maxindex
-        #     maxindex += 1
+        col = namecol["usertag"]
+        tags = getTags(s[col])
+        for tag in tags:
+            feat = str(col) + ':' + tag
+            if feat not in featindex:
+                featindex[feat] = maxindex
+                maxindex += 1
 
     print('feature size: ' + str(maxindex))
     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
@@ -207,14 +207,16 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        # col = namecol["usertag"]
-        # tags = getTags(s[col])
-        # # for tag in tags:
-        # feat = str(col) + ':' + ''.join(tags)
-        # if feat not in featindex:
-        #     feat = str(col) + ':other'
-        # index = featindex[feat]
-        # fo.write(',' + str(index))
+        col = namecol["usertag"]
+        tags = getTags(s[col])
+        for i, tag in enumerate(tags):
+            if i == 1:
+                break
+            feat = str(col) + ':' + tag
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 
@@ -251,14 +253,16 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        # col = namecol["usertag"]
-        # tags = getTags(s[col])
-        # # for tag in tags:
-        # feat = str(col) + ':' + ''.join(tags)
-        # if feat not in featindex:
-        #     feat = str(col) + ':other'
-        # index = featindex[feat]
-        # fo.write(',' + str(index))
+        col = namecol["usertag"]
+        tags = getTags(s[col])
+        for i, tag in enumerate(tags):
+            if i == 1:
+                break
+            feat = str(col) + ':' + tag
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
         fo.write('\n')
 
     # indexing test
@@ -294,14 +298,16 @@ def to_libsvm_encode(datapath, sample_type):
                 feat = str(col) + ':other'
             index = featindex[feat]
             fo.write(',' + str(index))
-        # col = namecol["usertag"]
-        # tags = getTags(s[col])
-        # # for tag in tags:
-        # feat = str(col) + ':' + ''.join(tags)
-        # if feat not in featindex:
-        #     feat = str(col) + ':other'
-        # index = featindex[feat]
-        # fo.write(',' + str(index))
+        col = namecol["usertag"]
+        tags = getTags(s[col])
+        for i, tag in enumerate(tags):
+            if i == 1:
+                break
+            feat = str(col) + ':' + tag
+            if feat not in featindex:
+                feat = str(col) + ':other'
+            index = featindex[feat]
+            fo.write(',' + str(index))
         fo.write('\n')
     fo.close()
 
@@ -365,7 +371,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='2997/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='2259/', help='1458, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)
