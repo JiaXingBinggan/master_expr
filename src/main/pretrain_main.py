@@ -295,7 +295,7 @@ if __name__ == '__main__':
     all_train_data_loader = torch.utils.data.DataLoader(all_train_dataset, batch_size=args.test_batch_size, num_workers=8)
 
     train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
-    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8, shuffle=1234)
+    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, num_workers=8)
 
     val_dataset = Data.libsvm_dataset(val_data[:, 1:], val_data[:, 0])
     val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.test_batch_size, num_workers=8)

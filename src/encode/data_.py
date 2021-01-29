@@ -54,8 +54,9 @@ def data_to_csv(datapath, is_to_csv):
     if datapath.split('/')[-2] == '2259' or datapath.split('/')[-2] == '2997':
         train_len = len(train_data)
         train_split = int(train_len * 0.8)
+
         train_fm = train_data.iloc[:train_split, :]
-        val_fm = train_data.iloc[(train_len - train_split):, :]
+        val_fm = train_data.iloc[train_split:, :]
 
         train_fm.to_csv(datapath + 'train.ctr.all.csv', index=None)
         val_fm.to_csv(datapath + 'val.ctr.all.csv', index=None)
@@ -80,236 +81,380 @@ def data_to_csv(datapath, is_to_csv):
         val_fm.to_csv(datapath + 'val.ctr.all.csv', index=None)
 
 def to_libsvm_encode(datapath, sample_type):
-    print('###### to libsvm encode ######\n')
-    oses = ["windows", "ios", "mac", "android", "linux"]
-    browsers = ["chrome", "sogou", "maxthon", "safari", "firefox", "theworld", "opera", "ie"]
+    train_path = datapath + 'train.ctr.' + sample_type + '.csv'
+    train_encode = datapath + 'train.ctr.' + sample_type + '.txt'
+    val_path = datapath + 'val.ctr.all.csv'
+    val_encode = datapath + 'val.ctr.' + sample_type + '.txt'
+    test_path = datapath + 'test.ctr.all.csv'
+    test_encode = datapath + 'test.ctr.' + sample_type + '.txt'
+    feature_index = datapath + 'feat.ctr.' + sample_type + '.txt'
 
-    f1s = ["weekday", "hour", "IP", "region", "city", "adexchange", "domain", "slotid", "slotwidth", "slotheight",
-           "slotvisibility", "slotformat", "creative", "advertiser"]
+    field = ['hour', 'weekday', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
+             'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser', 'usertag']
 
-    f1sp = ["useragent", "slotprice"]
+    table = collections.defaultdict(lambda: 0)
 
-    f2s = ["weekday,region"]
+    # 为特征名建立编号, filed
+    def field_index(x):
+        index = field.index(x)
+        return index
 
-    def featTrans(name, content):
-        content = content.lower()
-        if name == "useragent":
-            operation = "other"
-            for o in oses:
-                if o in content:
-                    operation = o
-                    break
-            browser = "other"
-            for b in browsers:
-                if b in content:
-                    browser = b
-                    break
-            return operation + "_" + browser
-        if name == "slotprice":
-            price = int(content)
-            if price > 100:
-                return "101+"
-            elif price > 50:
-                return "51-100"
-            elif price > 10:
-                return "11-50"
-            elif price > 0:
-                return "1-10"
-            else:
-                return "0"
+    def getIndices(key):
+        indices = table.get(key)
+        if indices is None:
+            indices = len(table)
+            table[key] = indices
+        return indices
 
-    def getTags(content):
-        if content == '\n' or len(content) == 0:
-            return ["null"]
-        return content.strip().split(',')
+    feature_indices = set()
+    with open(train_encode, 'w') as outfile:
+        for e, row in enumerate(DictReader(open(train_path)), start=1):
+            features = []
+            for k, v in row.items():
+                if k in field:
+                    if len(v) > 0:
+                        if k == 'usertag':
+                            v = '-'.join(v.split(',')[:3])
+                        elif k == 'slotprice':
+                            price = int(v)
+                            if price > 100:
+                                v = "101+"
+                            elif price > 50:
+                                v = "51-100"
+                            elif price > 10:
+                                v = "11-50"
+                            elif price > 0:
+                                v = "1-10"
+                            else:
+                                v = "0"
+                        kv = k + '_' + v
+                        features.append('{0}'.format(getIndices(kv)))
+                        feature_indices.add(kv + '\t' + str(getIndices(kv)))
+                    else:
+                        kv = k + '_' + 'other'
+                        features.append('{0}'.format(getIndices(kv)))
 
-    # initialize
-    namecol = {}
-    featindex = {}
-    maxindex = 0
+            if e % 100000 == 0:
+                print(datetime.now(), 'creating train.txt...', e)
 
-    fi = open(datapath + 'train.ctr.' + sample_type + '.csv', 'r')
+            outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
+    
+    with open(val_encode, 'w') as outfile:
+        for e, row in enumerate(DictReader(open(val_path)), start=1):
+            features = []
+            for k, v in row.items():
+                if k in field:
+                    if len(v) > 0:
+                        if k == 'usertag':
+                            v = '-'.join(v.split(',')[:3])
+                        elif k == 'slotprice':
+                            price = int(v)
+                            if price > 100:
+                                v = "101+"
+                            elif price > 50:
+                                v = "51-100"
+                            elif price > 10:
+                                v = "11-50"
+                            elif price > 0:
+                                v = "1-10"
+                            else:
+                                v = "0"
+                        kv = k + '_' + v
+                        indices = table.get(kv)
+                        if indices is None:
+                            kv = k + '_' + 'other'
+                            features.append('{0}'.format(getIndices(kv)))
+                        else:
+                            features.append('{0}'.format(getIndices(kv)))
+                    else:
+                        kv = k + '_' + 'other'
+                        features.append('{0}'.format(getIndices(kv)))
 
-    first = True
+            if e % 100000 == 0:
+                print(datetime.now(), 'creating val.txt...', e)
 
-    featindex['truncate'] = maxindex
-    maxindex += 1
+            outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
+    
+    with open(test_encode, 'w') as outfile:
+        for e, row in enumerate(DictReader(open(test_path)), start=1):
+            features = []
+            for k, v in row.items():
+                if k in field:
+                    if len(v) > 0:
+                        if k == 'usertag':
+                            v = '-'.join(v.split(',')[:3])
+                        elif k == 'slotprice':
+                            price = int(v)
+                            if price > 100:
+                                v = "101+"
+                            elif price > 50:
+                                v = "51-100"
+                            elif price > 10:
+                                v = "11-50"
+                            elif price > 0:
+                                v = "1-10"
+                            else:
+                                v = "0"
+                        kv = k + '_' + v
+                        indices = table.get(kv)
+                        if indices is None:
+                            kv = k + '_' + 'other'
+                            features.append('{0}'.format(getIndices(kv)))
+                        else:
+                            features.append('{0}'.format(getIndices(kv)))
+                    else:
+                        kv = k + '_' + 'other'
+                        features.append('{0}'.format(getIndices(kv)))
 
-    for line in fi:
-        s = line.split(',')
-        if first:
-            first = False
-            for i in range(0, len(s)):
-                namecol[s[i].strip()] = i
-                if i > 0:
-                    featindex[str(i) + ':other'] = maxindex
-                    maxindex += 1
-            continue
-        for f in f1s:
-            col = namecol[f]
-            content = s[col]
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                featindex[feat] = maxindex
-                maxindex += 1
-        for f in f1sp:
-            col = namecol[f]
-            content = featTrans(f, s[col])
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                featindex[feat] = maxindex
-                maxindex += 1
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        for tag in tags:
-            feat = str(col) + ':' + tag
-            if feat not in featindex:
-                featindex[feat] = maxindex
-                maxindex += 1
+            if e % 100000 == 0:
+                print(datetime.now(), 'creating test.txt...', e)
 
-    print('feature size: ' + str(maxindex))
-    featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
+            outfile.write('{0},{1}\n'.format(row['click'], ','.join('{0}'.format(val) for val in features)))
 
-    fo = open(datapath + 'feat.ctr.' + sample_type + '.txt', 'w')
-    fo.write(str(maxindex) + '\n')
-    for fv in featvalue:
-        fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
+    featvalue = sorted(table.items(), key=operator.itemgetter(1))
+    fo = open(feature_index, 'w')
+    fo.write(str(featvalue[-1][1] + 1) + '\n')
+    for t, fv in enumerate(featvalue, start=1):
+        if t > len(field):
+            k = fv[0].split('_')[0]
+            idx = field_index(k)
+            fo.write(str(idx) + ':' + fv[0] + '\t' + str(fv[1]) + '\n')
+        else:
+            fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
     fo.close()
 
-    # indexing train
-    print('indexing ' + datapath + 'train.ctr.' + sample_type + '.csv')
-    fi = open(datapath + 'train.ctr.' + sample_type + '.csv', 'r')
-    fo = open(datapath + 'train.ctr.' + sample_type + '.txt', 'w')
 
-    first = True
-    for line in fi:
-        if first:
-            first = False
-            continue
-        s = line.split(',')
-
-        fo.write(s[0])  # click
-        index = featindex['truncate']
-        fo.write(',' + str(index))
-        for f in f1s:  # every direct first order feature
-            col = namecol[f]
-            content = s[col]
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        for f in f1sp:
-            col = namecol[f]
-            content = featTrans(f, s[col])
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        for i, tag in enumerate(tags):
-            if i == 1:
-                break
-            feat = str(col) + ':' + tag
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        fo.write('\n')
-    fo.close()
-
-    # indexing val
-    print('indexing ' + datapath + 'val.ctr.all.csv')
-    fi = open(datapath + 'val.ctr.all.csv', 'r')
-    fo = open(datapath + 'val.ctr.' + sample_type + '.txt', 'w')
-
-    first = True
-    for line in fi:
-        if first:
-            first = False
-            continue
-        s = line.split(',')
-        fo.write(s[0])  # click + winning price + hour + timestamp
-        index = featindex['truncate']
-        fo.write(',' + str(index))
-        for f in f1s:  # every direct first order feature
-            col = namecol[f]
-            if col >= len(s):
-                print('col: ' + str(col))
-                print(line)
-            content = s[col]
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        for f in f1sp:
-            col = namecol[f]
-            content = featTrans(f, s[col])
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        for i, tag in enumerate(tags):
-            if i == 1:
-                break
-            feat = str(col) + ':' + tag
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        fo.write('\n')
-
-    # indexing test
-    print('indexing ' + datapath + 'test.ctr.all.csv')
-    fi = open(datapath + 'test.ctr.all.csv', 'r')
-    fo = open(datapath + 'test.ctr.' + sample_type + '.txt', 'w')
-
-    first = True
-    for line in fi:
-        if first:
-            first = False
-            continue
-        s = line.split(',')
-        fo.write(s[0])  # click + winning price + hour + timestamp
-        index = featindex['truncate']
-        fo.write(',' + str(index))
-        for f in f1s:  # every direct first order feature
-            col = namecol[f]
-            if col >= len(s):
-                print('col: ' + str(col))
-                print(line)
-            content = s[col]
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        for f in f1sp:
-            col = namecol[f]
-            content = featTrans(f, s[col])
-            feat = str(col) + ':' + content
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        col = namecol["usertag"]
-        tags = getTags(s[col])
-        for i, tag in enumerate(tags):
-            if i == 1:
-                break
-            feat = str(col) + ':' + tag
-            if feat not in featindex:
-                feat = str(col) + ':other'
-            index = featindex[feat]
-            fo.write(',' + str(index))
-        fo.write('\n')
-    fo.close()
+# def to_libsvm_encode(datapath, sample_type):
+#     print('###### to libsvm encode ######\n')
+#     oses = ["windows", "ios", "mac", "android", "linux"]
+#     browsers = ["chrome", "sogou", "maxthon", "safari", "firefox", "theworld", "opera", "ie"]
+# 
+#     f1s = ["weekday", "hour", "IP", "region", "city", "adexchange", "domain", "slotid", "slotwidth", "slotheight",
+#            "slotvisibility", "slotformat", "creative", "advertiser"]
+# 
+#     f1sp = ["useragent", "slotprice"]
+# 
+#     f2s = ["weekday,region"]
+# 
+#     def featTrans(name, content):
+#         content = content.lower()
+#         if name == "useragent":
+#             operation = "other"
+#             for o in oses:
+#                 if o in content:
+#                     operation = o
+#                     break
+#             browser = "other"
+#             for b in browsers:
+#                 if b in content:
+#                     browser = b
+#                     break
+#             return operation + "_" + browser
+#         if name == "slotprice":
+#             price = int(content)
+#             if price > 100:
+#                 return "101+"
+#             elif price > 50:
+#                 return "51-100"
+#             elif price > 10:
+#                 return "11-50"
+#             elif price > 0:
+#                 return "1-10"
+#             else:
+#                 return "0"
+# 
+#     def getTags(content):
+#         if content == '\n' or len(content) == 0:
+#             return ["null"]
+#         return content.strip().split(',')
+# 
+#     # initialize
+#     namecol = {}
+#     featindex = {}
+#     maxindex = 0
+# 
+#     fi = open(datapath + 'train.ctr.' + sample_type + '.csv', 'r')
+# 
+#     first = True
+# 
+#     featindex['truncate'] = maxindex
+#     maxindex += 1
+# 
+#     for line in fi:
+#         s = line.split(',')
+#         if first:
+#             first = False
+#             for i in range(0, len(s)):
+#                 namecol[s[i].strip()] = i
+#                 if i > 0:
+#                     featindex[str(i) + ':other'] = maxindex
+#                     maxindex += 1
+#             continue
+#         for f in f1s:
+#             col = namecol[f]
+#             content = s[col]
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 featindex[feat] = maxindex
+#                 maxindex += 1
+#         for f in f1sp:
+#             col = namecol[f]
+#             content = featTrans(f, s[col])
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 featindex[feat] = maxindex
+#                 maxindex += 1
+#         col = namecol["usertag"]
+#         tags = getTags(s[col])
+#         for tag in tags:
+#             feat = str(col) + ':' + tag
+#             if feat not in featindex:
+#                 featindex[feat] = maxindex
+#                 maxindex += 1
+# 
+#     print('feature size: ' + str(maxindex))
+#     featvalue = sorted(featindex.items(), key=operator.itemgetter(1))
+# 
+#     fo = open(datapath + 'feat.ctr.' + sample_type + '.txt', 'w')
+#     fo.write(str(maxindex) + '\n')
+#     for fv in featvalue:
+#         fo.write(fv[0] + '\t' + str(fv[1]) + '\n')
+#     fo.close()
+# 
+#     # indexing train
+#     print('indexing ' + datapath + 'train.ctr.' + sample_type + '.csv')
+#     fi = open(datapath + 'train.ctr.' + sample_type + '.csv', 'r')
+#     fo = open(datapath + 'train.ctr.' + sample_type + '.txt', 'w')
+# 
+#     first = True
+#     for line in fi:
+#         if first:
+#             first = False
+#             continue
+#         s = line.split(',')
+# 
+#         fo.write(s[0])  # click
+#         index = featindex['truncate']
+#         fo.write(',' + str(index))
+#         for f in f1s:  # every direct first order feature
+#             col = namecol[f]
+#             content = s[col]
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         for f in f1sp:
+#             col = namecol[f]
+#             content = featTrans(f, s[col])
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         col = namecol["usertag"]
+#         tags = getTags(s[col])
+#         for i, tag in enumerate(tags):
+#             if i == 1:
+#                 break
+#             feat = str(col) + ':' + tag
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         fo.write('\n')
+#     fo.close()
+# 
+#     # indexing val
+#     print('indexing ' + datapath + 'val.ctr.all.csv')
+#     fi = open(datapath + 'val.ctr.all.csv', 'r')
+#     fo = open(datapath + 'val.ctr.' + sample_type + '.txt', 'w')
+# 
+#     first = True
+#     for line in fi:
+#         if first:
+#             first = False
+#             continue
+#         s = line.split(',')
+#         fo.write(s[0])  # click + winning price + hour + timestamp
+#         index = featindex['truncate']
+#         fo.write(',' + str(index))
+#         for f in f1s:  # every direct first order feature
+#             col = namecol[f]
+#             if col >= len(s):
+#                 print('col: ' + str(col))
+#                 print(line)
+#             content = s[col]
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         for f in f1sp:
+#             col = namecol[f]
+#             content = featTrans(f, s[col])
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         col = namecol["usertag"]
+#         tags = getTags(s[col])
+#         for i, tag in enumerate(tags):
+#             if i == 1:
+#                 break
+#             feat = str(col) + ':' + tag
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         fo.write('\n')
+# 
+#     # indexing test
+#     print('indexing ' + datapath + 'test.ctr.all.csv')
+#     fi = open(datapath + 'test.ctr.all.csv', 'r')
+#     fo = open(datapath + 'test.ctr.' + sample_type + '.txt', 'w')
+# 
+#     first = True
+#     for line in fi:
+#         if first:
+#             first = False
+#             continue
+#         s = line.split(',')
+#         fo.write(s[0])  # click + winning price + hour + timestamp
+#         index = featindex['truncate']
+#         fo.write(',' + str(index))
+#         for f in f1s:  # every direct first order feature
+#             col = namecol[f]
+#             if col >= len(s):
+#                 print('col: ' + str(col))
+#                 print(line)
+#             content = s[col]
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         for f in f1sp:
+#             col = namecol[f]
+#             content = featTrans(f, s[col])
+#             feat = str(col) + ':' + content
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         col = namecol["usertag"]
+#         tags = getTags(s[col])
+#         for i, tag in enumerate(tags):
+#             if i == 1:
+#                 break
+#             feat = str(col) + ':' + tag
+#             if feat not in featindex:
+#                 feat = str(col) + ':other'
+#             index = featindex[feat]
+#             fo.write(',' + str(index))
+#         fo.write('\n')
+#     fo.close()
 
 def down_sample(data_path):
     # 负采样后达到的点击率
