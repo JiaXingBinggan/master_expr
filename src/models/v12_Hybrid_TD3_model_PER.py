@@ -327,17 +327,17 @@ class Hybrid_TD3_Model():
         self.Hybrid_Critic_ = copy.deepcopy(self.Hybrid_Critic)
 
         # 优化器
-        self.optimizer_a = torch.optim.Adam(self.Hybrid_Actor.parameters(), lr=self.lr_C_A, weight_decay=1e-5)
+        self.optimizer_a = torch.optim.Adam(self.Hybrid_Actor.parameters(), lr=self.lr_C_A)
         self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C, weight_decay=1e-5)
 
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.learn_iter = 0
-        self.policy_freq = 10
+        self.policy_freq = 3
 
         self.temprature = 2.0
         self.temprature_max = 2.0
-        self.temprature_min = 0.5
+        self.temprature_min = 1.0
         self.anneal_rate = 3e-8
 
     def store_transition(self, transitions):  # 所有的值都应该弄成float
@@ -376,8 +376,8 @@ class Hybrid_TD3_Model():
 
         ensemble_c_actions = torch.softmax(c_action_means, dim=-1)
 
-        # ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_min, hard=True), dim=-1) + 1
-        ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=0.1, hard=True), dim=-1) + 1
+        # ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), c_action_means, ensemble_c_actions
 
@@ -518,7 +518,7 @@ class Hybrid_TD3_Model():
             # print(d_actions_q_values_, c_actions_means_)
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-2).mean()
+            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-3).mean()
 
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
