@@ -156,7 +156,7 @@ class WideAndDeep(nn.Module):
         neuron_nums = [200, 300, 100] # recited paper
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -165,7 +165,7 @@ class WideAndDeep(nn.Module):
 
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        # weight_init_out([layers[-1]])
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 
@@ -203,7 +203,7 @@ class InnerPNN(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -212,7 +212,7 @@ class InnerPNN(nn.Module):
 
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        # weight_init_out([layers[-1]])
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 
@@ -260,7 +260,7 @@ class OuterPNN(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -269,7 +269,7 @@ class OuterPNN(nn.Module):
 
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        # weight_init_out([layers[-1]])
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 
@@ -321,7 +321,7 @@ class DeepFM(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -330,7 +330,7 @@ class DeepFM(nn.Module):
 
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        # weight_init_out([layers[-1]])
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)  # 7141262125646409
 
@@ -374,7 +374,7 @@ class FNN(nn.Module):
         neuron_nums = [200, 300, 100]
         for neuron_num in neuron_nums:
             layers.append(nn.Linear(deep_input_dims, neuron_num))
-            layers.append(nn.BatchNorm1d(neuron_num))
+            # layers.append(nn.BatchNorm1d(neuron_num))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -383,7 +383,7 @@ class FNN(nn.Module):
 
         layers.append(nn.Linear(deep_input_dims, 1))
 
-        # weight_init_out([layers[-1]])
+        weight_init_out([layers[-1]])
 
         self.mlp = nn.Sequential(*layers)
 
@@ -427,7 +427,7 @@ class DCN(nn.Module):
 
         for neural_num in neural_nums:
             deep_net_layers.append(nn.Linear(deep_input_dims, neural_num))
-            deep_net_layers.append(nn.BatchNorm1d(neural_num))
+            # deep_net_layers.append(nn.BatchNorm1d(neural_num))
             deep_net_layers.append(nn.ReLU())
             deep_net_layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neural_num

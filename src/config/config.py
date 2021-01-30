@@ -90,7 +90,7 @@ def init_parser(campaign_id):
     elif args.ensemble_nums == 5:
         args.ensemble_models = 'LR,FM,FNN,W&D,AFM'
     elif args.ensemble_nums == 7:
-        args.ensemble_models = 'LR,FM,FNN,W&D,IPNN,DCN,AFM'
+        args.ensemble_models = 'LR,FM,IPNN,OPNN,DeepFM,W&D,DCN,AFM'
 
     # 设置随机数种子
     setup_seed(args.seed)
