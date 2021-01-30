@@ -125,8 +125,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         with_clk_rewards = torch.where(
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * -1
+            current_basic_rewards[current_with_clk_indexs] * 1e-1,
+            current_basic_rewards[current_with_clk_indexs] * -1e-1
         )
 
         # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
@@ -135,8 +135,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * -1
+            current_basic_rewards[current_without_clk_indexs] * 1e-1,
+            current_basic_rewards[current_without_clk_indexs] * -1e-1
         )
         # without_clk_rewards = current_pretrain_y_preds[
         #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
@@ -268,16 +268,17 @@ def get_dataset(args):
     datapath = args.data_path + args.dataset_name + args.campaign_id
 
     columns = ['label'] + args.ensemble_models.split(',')
-    train_data = pd.read_csv(  datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
+    train_data = pd.read_csv(datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
+    val_data = pd.read_csv(datapath + 'val.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
     test_data = pd.read_csv(datapath + 'test.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
 
-    return train_data, test_data
+    return train_data, val_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
-    train_data, test_data = get_dataset(args)
+    train_data, val_data, test_data = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)
@@ -314,6 +315,9 @@ if __name__ == '__main__':
 
     test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
     test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
+
+    val_dataset = Data.libsvm_dataset(val_data[:, 1:], val_data[:, 0])
+    val_data_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
 
     test_predict_arrs = []
 
@@ -357,7 +361,7 @@ if __name__ == '__main__':
     record_list = []
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
-    train_batch_gen = get_list_data(train_data, args.rl_iter_size, False)# 要不要早停
+    train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
     # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
     # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_iter_size, num_workers=8, shuffle=1)
     while intime_steps <= args.stop_steps:
@@ -386,11 +390,13 @@ if __name__ == '__main__':
         rl_model.store_transition(transitions)
 
         if intime_steps % gap == 0:
+            val_auc, val_predicts, val_rewards, val_actions, val_prob_weights = test(rl_model, args.ensemble_nums, val_data_loader, device)
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
+
             record_list = [auc, predicts, actions, prob_weights]
 
-            logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, [{}s]'.format(
-                args.rl_model_name, intime_steps, auc, test_rewards, (datetime.datetime.now() - train_start_time).seconds))
+            logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, test auc {}, [{}s]'.format(
+                args.rl_model_name, intime_steps, val_auc, test_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
             val_rewards_records.append(test_rewards)
             timesteps.append(intime_steps)
             val_aucs.append(auc)
@@ -398,8 +404,11 @@ if __name__ == '__main__':
             train_critics.append(tmp_train_ctritics)
 
             rl_model.temprature = max(rl_model.temprature_min,
-                                       rl_model.temprature_max - intime_steps *
+                                       rl_model.temprature - gap *
                                        (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
+            rl_model.memory.beta = max(rl_model.memory.beta_max,
+                                      rl_model.memory.beta + gap *
+                                       (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
             early_aucs.append([record_param_steps, auc])
             early_rewards.append([record_param_steps, test_rewards])
@@ -417,8 +426,7 @@ if __name__ == '__main__':
 
             torch.cuda.empty_cache()
 
-        if intime_steps >= args.rl_batch_size:
-            if intime_steps % 10 == 0:
+        if intime_steps >= args.rl_batch_size and intime_steps % args.rl_batch_size == 0:
                 critic_loss = rl_model.learn()
                 tmp_train_ctritics = critic_loss
 

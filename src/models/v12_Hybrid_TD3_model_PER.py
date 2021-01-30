@@ -81,7 +81,7 @@ class Memory(object):
             sample_indexs = torch.Tensor(
                 np.random.choice(self.memory_counter, batch_size, p=P, replace=False)).long().to(self.device)
 
-        self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
+        # self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
         # print(self.beta)
         batch = self.memory[sample_indexs]
         choose_priorities = priorities[sample_indexs]
@@ -125,7 +125,7 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(-0.003, 0.003)
+            layer.weight.data.uniform_(-0.005, 0.005)
             layer.bias.data.fill_(0)
 
 
@@ -376,7 +376,8 @@ class Hybrid_TD3_Model():
 
         ensemble_c_actions = torch.softmax(c_action_means, dim=-1)
 
-        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_min, hard=True), dim=-1) + 1
+        # ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_min, hard=True), dim=-1) + 1
+        ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), c_action_means, ensemble_c_actions
 
@@ -441,10 +442,10 @@ class Hybrid_TD3_Model():
     def learn(self):
         self.learn_iter += 1
 
-        self.Hybrid_Actor.train()
-        self.Hybrid_Actor_.train()
-        self.Hybrid_Critic.train()
-        self.Hybrid_Critic_.train()
+        # self.Hybrid_Actor.train()
+        # self.Hybrid_Actor_.train()
+        # self.Hybrid_Critic.train()
+        # self.Hybrid_Critic_.train()
 
         # sample
         choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
@@ -517,7 +518,7 @@ class Hybrid_TD3_Model():
             # print(d_actions_q_values_, c_actions_means_)
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -(a_critic_value - (c_reg + d_reg)).mean()
+            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-2).mean()
 
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
