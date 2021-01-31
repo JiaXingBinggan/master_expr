@@ -377,7 +377,7 @@ class Hybrid_TD3_Model():
 
         ensemble_c_actions = torch.softmax(c_action_means, dim=-1)
 
-        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=0.1, hard=True), dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_min, hard=True), dim=-1) + 1
         # ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), c_action_means, ensemble_c_actions
