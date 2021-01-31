@@ -125,8 +125,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         with_clk_rewards = torch.where(
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1e-1,
-            current_basic_rewards[current_with_clk_indexs] * -1e-1
+            current_basic_rewards[current_with_clk_indexs] * 1,
+            current_basic_rewards[current_with_clk_indexs] * -1
         )
 
         # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
@@ -135,8 +135,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1e-1,
-            current_basic_rewards[current_without_clk_indexs] * -1e-1
+            current_basic_rewards[current_without_clk_indexs] * 1,
+            current_basic_rewards[current_without_clk_indexs] * -1
         )
         # without_clk_rewards = current_pretrain_y_preds[
         #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
@@ -275,7 +275,7 @@ def get_dataset(args):
     return train_data, val_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, val_data, test_data = get_dataset(args)
@@ -393,28 +393,28 @@ if __name__ == '__main__':
             val_auc, val_predicts, val_rewards, val_actions, val_prob_weights = test(rl_model, args.ensemble_nums, val_data_loader, device)
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
 
-            record_list = [auc, predicts, actions, prob_weights]
+            # record_list = [auc, predicts, actions, prob_weights]
 
             logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, test auc {}, [{}s]'.format(
                 args.rl_model_name, intime_steps, val_auc, test_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
-            val_rewards_records.append(test_rewards)
+            val_rewards_records.append(val_rewards)
             timesteps.append(intime_steps)
-            val_aucs.append(auc)
+            val_aucs.append(val_auc)
 
             train_critics.append(tmp_train_ctritics)
 
             rl_model.temprature = max(rl_model.temprature_min,
                                        rl_model.temprature - gap *
                                        (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
-            rl_model.memory.beta = max(rl_model.memory.beta_max,
+            rl_model.memory.beta = min(rl_model.memory.beta_max,
                                       rl_model.memory.beta + gap *
                                        (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
             early_aucs.append([record_param_steps, auc])
             early_rewards.append([record_param_steps, test_rewards])
-            # torch.save(rl_model.Hybrid_Actor.state_dict(),
-            #            args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-            #                np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
+            torch.save(rl_model.Hybrid_Actor.state_dict(),
+                       args.save_param_dir + args.campaign_id + args.rl_model_name + str(
+                           np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
 
             record_param_steps += 1
             if args.run_steps <= intime_steps <= args.stop_steps:
@@ -426,9 +426,10 @@ if __name__ == '__main__':
 
             torch.cuda.empty_cache()
 
-        if intime_steps >= args.rl_batch_size and intime_steps % args.rl_batch_size == 0:
-                critic_loss = rl_model.learn()
-                tmp_train_ctritics = critic_loss
+        # if intime_steps >= args.rl_batch_size and intime_steps % 10 == 0:
+        if intime_steps >= args.rl_batch_size:
+            critic_loss = rl_model.learn()
+            tmp_train_ctritics = critic_loss
 
         intime_steps += batchs.shape[0]
 
@@ -439,20 +440,20 @@ if __name__ == '__main__':
     '''
     要不要早停
     '''
-    #if is_early_stop:
-       # test_rl_model = get_model(args, device)
-        #load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-                             #  early_stop_index) + '.pth'
+    if is_early_stop:
+        test_rl_model = get_model(args, device)
+        load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
+                              early_stop_index) + '.pth'
 
-        #test_rl_model.Hybrid_Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
-    #else:
-        #test_rl_model = rl_model
+        test_rl_model.Hybrid_Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
+    else:
+        test_rl_model = rl_model
 
-    test_auc, test_predicts, test_actions, test_prob_weights = \
-        record_list[0], record_list[1], record_list[2].cpu().numpy(), record_list[3].cpu().numpy()
+    test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
+                                                                          device)
 
-    # for i in range(args.rl_early_stop_iter):
-    #     os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
+    for i in range(args.rl_early_stop_iter):
+        os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
 
     logger.info('Model {}, test auc {}, [{}s]'.format(args.rl_model_name,
                                                         test_auc, (datetime.datetime.now() - start_time).seconds))

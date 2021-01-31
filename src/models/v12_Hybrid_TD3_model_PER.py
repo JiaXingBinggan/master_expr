@@ -24,7 +24,7 @@ class Memory(object):
         self.transition_lens = transition_lens  # 存储的数据长度
         self.epsilon = 1e-3  # 防止出现zero priority
         self.alpha = 0.6  # 取值范围(0,1)，表示td error对priority的影响
-        self.beta = 0.4  # important sample， 从初始值到1
+        self.beta = 0.2  # important sample， 从初始值到1
         self.beta_min = 0.4
         self.beta_max = 1.0
         self.beta_increment_per_sampling = 0.0001
@@ -145,7 +145,7 @@ class Hybrid_Critic(nn.Module):
         self.layers_1 = list()
         for neuron_num in self.neuron_nums:
             self.layers_1.append(nn.Linear(deep_input_dims_1, neuron_num))
-            # self.layers_1.append(nn.BatchNorm1d(neuron_num))
+            self.layers_1.append(nn.BatchNorm1d(neuron_num))
             self.layers_1.append(nn.ReLU())
             # self.layers_1.append(nn.Dropout(p=0.2))
             deep_input_dims_1 = neuron_num
@@ -156,7 +156,7 @@ class Hybrid_Critic(nn.Module):
         self.layers_2 = list()
         for neuron_num in self.neuron_nums:
             self.layers_2.append(nn.Linear(deep_input_dims_2, neuron_num))
-            # self.layers_2.append(nn.BatchNorm1d(neuron_num))
+            self.layers_2.append(nn.BatchNorm1d(neuron_num))
             self.layers_2.append(nn.ReLU())
             # self.layers_2.append(nn.Dropout(p=0.2))
             deep_input_dims_2 = neuron_num
@@ -171,6 +171,7 @@ class Hybrid_Critic(nn.Module):
 
     def evaluate(self, input, c_actions, d_actions):
         obs = self.bn_input(input)
+
         # obs = input
         c_q_out_1 = self.mlp_1(torch.cat([obs, d_actions, c_actions], dim=-1))
         c_q_out_2 = self.mlp_2(torch.cat([obs, d_actions, c_actions], dim=-1))
@@ -201,7 +202,7 @@ class Hybrid_Actor(nn.Module):
         self.layers = list()
         for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
-            # self.layers.append(nn.BatchNorm1d(neuron_num))
+            self.layers.append(nn.BatchNorm1d(neuron_num))
             self.layers.append(nn.ReLU())
             # self.layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
@@ -333,11 +334,11 @@ class Hybrid_TD3_Model():
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.learn_iter = 0
-        self.policy_freq = 3
+        self.policy_freq = 5
 
         self.temprature = 2.0
         self.temprature_max = 2.0
-        self.temprature_min = 1.0
+        self.temprature_min = 0.5
         self.anneal_rate = 3e-8
 
     def store_transition(self, transitions):  # 所有的值都应该弄成float
@@ -518,7 +519,7 @@ class Hybrid_TD3_Model():
             # print(d_actions_q_values_, c_actions_means_)
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-3).mean()
+            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-2).mean()
 
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
