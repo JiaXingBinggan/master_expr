@@ -145,7 +145,7 @@ class Hybrid_Critic(nn.Module):
         self.layers_1 = list()
         for neuron_num in self.neuron_nums:
             self.layers_1.append(nn.Linear(deep_input_dims_1, neuron_num))
-            self.layers_1.append(nn.BatchNorm1d(neuron_num))
+            # self.layers_1.append(nn.BatchNorm1d(neuron_num))
             self.layers_1.append(nn.ReLU())
             # self.layers_1.append(nn.Dropout(p=0.2))
             deep_input_dims_1 = neuron_num
@@ -156,7 +156,7 @@ class Hybrid_Critic(nn.Module):
         self.layers_2 = list()
         for neuron_num in self.neuron_nums:
             self.layers_2.append(nn.Linear(deep_input_dims_2, neuron_num))
-            self.layers_2.append(nn.BatchNorm1d(neuron_num))
+            # self.layers_2.append(nn.BatchNorm1d(neuron_num))
             self.layers_2.append(nn.ReLU())
             # self.layers_2.append(nn.Dropout(p=0.2))
             deep_input_dims_2 = neuron_num
@@ -202,7 +202,7 @@ class Hybrid_Actor(nn.Module):
         self.layers = list()
         for neuron_num in self.neuron_nums:
             self.layers.append(nn.Linear(deep_input_dims, neuron_num))
-            self.layers.append(nn.BatchNorm1d(neuron_num))
+            # self.layers.append(nn.BatchNorm1d(neuron_num))
             self.layers.append(nn.ReLU())
             # self.layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
