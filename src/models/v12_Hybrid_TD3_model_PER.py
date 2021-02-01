@@ -331,7 +331,7 @@ class Hybrid_TD3_Model():
         self.optimizer_a = torch.optim.Adam(self.Hybrid_Actor.parameters(), lr=self.lr_C_A)
         self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C, weight_decay=1e-5)
 
-        self.loss_func = nn.MSELoss(reduction='mean')
+        self.loss_func = nn.MSELoss(reduction='none')
 
         self.learn_iter = 0
         self.policy_freq = 5
@@ -339,6 +339,8 @@ class Hybrid_TD3_Model():
         self.temprature = 2.0
         self.temprature_max = 2.0
         self.temprature_min = 0.5
+
+        self.temprature_eva = 0.1
         self.anneal_rate = 3e-8
 
     def store_transition(self, transitions):  # 所有的值都应该弄成float
@@ -377,7 +379,7 @@ class Hybrid_TD3_Model():
 
         ensemble_c_actions = torch.softmax(c_action_means, dim=-1)
 
-        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_min, hard=True), dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_eva, hard=True), dim=-1) + 1
         # ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), c_action_means, ensemble_c_actions
@@ -485,8 +487,9 @@ class Hybrid_TD3_Model():
         q1, q2 = self.Hybrid_Critic.evaluate(b_s, b_c_a, b_d_a)
 
         critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
-        critic_loss = (
-        ISweights * (F.mse_loss(q1, q_target, reduction='none') + F.mse_loss(q2, q_target, reduction='none'))).mean()
+        critic_loss = torch.mul(ISweights,
+                                self.loss_func(q1, q_target) +
+                                self.loss_func(q2, q_target)).mean()
 
         # critic_loss = F.mse_loss(q1, q_target) + F.mse_loss(q2, q_target)
 
@@ -502,7 +505,7 @@ class Hybrid_TD3_Model():
         if self.learn_iter % self.policy_freq == 0:
             c_actions_means, d_actions_q_values = self.Hybrid_Actor.evaluate(b_s)
 
-            d_actions_q_values_ = gumbel_softmax_sample(logits=d_actions_q_values, temprature=self.temprature_min,
+            d_actions_q_values_ = gumbel_softmax_sample(logits=d_actions_q_values, temprature=self.temprature_eva,
                                                         hard=False)
             c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)
             # c_actions_means_ = c_actions_means
@@ -519,7 +522,7 @@ class Hybrid_TD3_Model():
             # print(d_actions_q_values_, c_actions_means_)
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-2).mean()
+            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-3).mean()
 
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 

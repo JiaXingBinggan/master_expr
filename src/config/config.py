@@ -73,7 +73,7 @@ def init_parser(campaign_id):
     parser.add_argument('--rl_batch_size', type=int, default=32)
     parser.add_argument('--rl_iter_size', type=int, default=10)
     parser.add_argument('--rl_train_iters', type=int, default=128)
-    parser.add_argument('--rl_gen_batch_size', type=int, default=4096 * 128)
+    parser.add_argument('--rl_gen_batch_size', type=int, default=4096 * 256)
     parser.add_argument('--memory_size', type=int, default=1000000) # 感觉需要再调调,100000
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-1)
