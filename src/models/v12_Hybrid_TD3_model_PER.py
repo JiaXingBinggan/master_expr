@@ -495,7 +495,7 @@ class Hybrid_TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=40, norm_type=2)
+        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=100, norm_type=2)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -516,19 +516,19 @@ class Hybrid_TD3_Model():
             # c_reg = -(c_actions_means_.log().mean())
             # d_reg = -(d_actions_q_values_.log().mean())
 
-            c_reg = 0.5 * (torch.pow(c_actions_means, 2))
+            c_reg = 0.5 * (torch.pow(c_actions_means, 2).mean())
             d_reg = 0.5 * (torch.pow(d_actions_q_values, 2).mean())
 
             # print(d_actions_q_values_, c_actions_means_)
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -(a_critic_value - (c_reg + d_reg) * 1e-3).mean()
+            c_a_loss = -a_critic_value.mean() + (c_reg + d_reg) * 1e-2
 
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=40, norm_type=2)
+            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=100, norm_type=2)
             self.optimizer_a.step()
 
             # for name, parms in self.Hybrid_Actor.d_action_layer.named_parameters():
