@@ -7,7 +7,7 @@ import argparse
 import random
 from sklearn.metrics import roc_auc_score
 import src.models.p_model as Model
-import src.models.v12_Hybrid_TD3_model_PER as td3_model
+import src.models.v13_Hybrid_TD3_model_PER as td3_model
 import src.models.creat_data as Data
 from src.models.Feature_embedding import Feature_Embedding
 
@@ -275,7 +275,7 @@ def get_dataset(args):
     return train_data, val_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, val_data, test_data = get_dataset(args)
@@ -358,7 +358,7 @@ if __name__ == '__main__':
     early_stop_index = 0
     intime_steps = 0
 
-    record_list = []
+    record_list = {}
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
     train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
@@ -375,7 +375,7 @@ if __name__ == '__main__':
         s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
         c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions = rl_model.choose_action(
-            s_t, False if intime_steps >= gap else True)
+            s_t)
 
         y_preds, rewards, return_c_actions, return_ctrs = \
             generate_preds(args.ensemble_nums, current_pretrain_y_preds, ensemble_d_actions, ensemble_c_actions, c_actions, labels, device,
@@ -393,7 +393,7 @@ if __name__ == '__main__':
             val_auc, val_predicts, val_rewards, val_actions, val_prob_weights = test(rl_model, args.ensemble_nums, val_data_loader, device)
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
 
-            # record_list = [auc, predicts, actions, prob_weights]
+            record_list.setdefault(record_param_steps % args.rl_early_stop_iter, [auc, predicts, actions, prob_weights])
 
             logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, test auc {}, [{}s]'.format(
                 args.rl_model_name, intime_steps, val_auc, test_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
@@ -412,9 +412,9 @@ if __name__ == '__main__':
 
             early_aucs.append([record_param_steps, auc])
             early_rewards.append([record_param_steps, test_rewards])
-            torch.save(rl_model.Hybrid_Actor.state_dict(),
-                       args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-                           np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
+            # torch.save(rl_model.Hybrid_Actor.state_dict(),
+            #            args.save_param_dir + args.campaign_id + args.rl_model_name + str(
+            #                np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
 
             record_param_steps += 1
             if args.run_steps <= intime_steps <= args.stop_steps:
@@ -440,20 +440,21 @@ if __name__ == '__main__':
     '''
     要不要早停
     '''
-    if is_early_stop:
-        test_rl_model = get_model(args, device)
-        load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-                              early_stop_index) + '.pth'
+    # if is_early_stop:
+    #     test_rl_model = get_model(args, device)
+    #     load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
+    #                           early_stop_index) + '.pth'
+    #
+    #     test_rl_model.Hybrid_Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
+    # else:
+    #     test_rl_model = rl_model
+    #
+    # test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
+    #                                                                       device)
+    test_predicts, test_auc, test_actions, test_prob_weights = record_list[early_stop_index]
 
-        test_rl_model.Hybrid_Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
-    else:
-        test_rl_model = rl_model
-
-    test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
-                                                                          device)
-
-    for i in range(args.rl_early_stop_iter):
-        os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
+    # for i in range(args.rl_early_stop_iter):
+    #     os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
 
     logger.info('Model {}, test auc {}, [{}s]'.format(args.rl_model_name,
                                                         test_auc, (datetime.datetime.now() - start_time).seconds))
