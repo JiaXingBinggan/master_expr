@@ -211,7 +211,6 @@ class Hybrid_Actor(nn.Module):
 
         self.mlp = nn.Sequential(*self.layers)
 
-
     def act(self, input, temprature):
         obs = self.bn_input(input)
         # obs = input
@@ -310,7 +309,7 @@ class Hybrid_TD3_Model():
 
         # 优化器
         self.optimizer_a = torch.optim.Adam(self.Hybrid_Actor.parameters(), lr=self.lr_C_A)
-        self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C)
+        self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C, weight_decay=1e-5)
 
         self.loss_func = nn.MSELoss(reduction='none')
 
@@ -456,8 +455,8 @@ class Hybrid_TD3_Model():
 
             # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.softmax(c_actions_means_next, dim=-1))
             # next_c_actions = torch.softmax(c_actions_means_next + torch.normal(c_actions_means_next, 0.2), dim=-1)
-            next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.tanh(action_values_next))
-            # next_c_actions = c_actions_means_next + torch.clamp(torch.randn_like(c_actions_means_next)* 0.2, -0.5, 0.5)
+            # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.tanh(action_values_next))
+            next_c_actions = torch.tanh(action_values_next) + torch.clamp(torch.randn_like(torch.tanh(action_values_next)) * 0.2, -0.5, 0.5)
 
             q1_target, q2_target = \
                 self.Hybrid_Critic_.evaluate(b_s_, next_c_actions, next_d_actions)
@@ -486,11 +485,11 @@ class Hybrid_TD3_Model():
         if self.learn_iter % self.policy_freq == 0:
             action_values = self.Hybrid_Actor.evaluate(b_s)
 
-            # d_actions_q_values_ = gumbel_softmax_sample(logits=action_values, temprature=self.temprature_eva,
-            #                                             hard=False)
-            d_actions_q_values_ = onehot_from_logits(logits=action_values)
-            c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, torch.tanh(action_values))
-            # c_actions_means_ = c_actions_means
+            d_actions_q_values_ = gumbel_softmax_sample(logits=action_values, temprature=self.temprature_min,
+                                                        hard=False)
+            # d_actions_q_values_ = onehot_from_logits(logits=action_values)
+            # c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, torch.tanh(action_values))
+            c_actions_means_ = torch.tanh(action_values)
 
             # Hybrid_Actor
             reg = torch.pow(action_values, 2).mean()
@@ -498,8 +497,7 @@ class Hybrid_TD3_Model():
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
 
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -a_critic_value.mean() + reg * 1e-1
-            # print(c_a_loss, reg)
+            c_a_loss = -a_critic_value.mean() + reg
 
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 

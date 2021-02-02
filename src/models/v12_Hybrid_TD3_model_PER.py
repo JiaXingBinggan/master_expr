@@ -475,8 +475,8 @@ class Hybrid_TD3_Model():
 
             # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.softmax(c_actions_means_next, dim=-1))
             # next_c_actions = torch.softmax(c_actions_means_next + torch.normal(c_actions_means_next, 0.2), dim=-1)
-            next_c_actions = self.to_next_state_c_actions(next_d_actions, c_actions_means_next)
-            # next_c_actions = c_actions_means_next + torch.clamp(torch.randn_like(c_actions_means_next)* 0.2, -0.5, 0.5)
+            # next_c_actions = self.to_next_state_c_actions(next_d_actions, c_actions_means_next)
+            next_c_actions = c_actions_means_next + torch.clamp(torch.randn_like(c_actions_means_next)* 0.2, -0.5, 0.5)
 
             q1_target, q2_target = \
                 self.Hybrid_Critic_.evaluate(b_s_, next_c_actions, next_d_actions)
@@ -495,7 +495,7 @@ class Hybrid_TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=100, norm_type=2)
+        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=40, norm_type=2)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -507,8 +507,8 @@ class Hybrid_TD3_Model():
 
             d_actions_q_values_ = gumbel_softmax_sample(logits=d_actions_q_values, temprature=self.temprature_eva,
                                                         hard=False)
-            c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)
-            # c_actions_means_ = c_actions_means
+            # c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)
+            c_actions_means_ = c_actions_means
 
             # Hybrid_Actor
             # c_action_softmax = torch.softmax(c_actions_means, dim=-1)
@@ -523,12 +523,12 @@ class Hybrid_TD3_Model():
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
             c_a_loss = -a_critic_value.mean() + (c_reg + d_reg) * 1e-2
-
+            print(c_a_loss, c_reg, d_reg)
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=100, norm_type=2)
+            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=40, norm_type=2)
             self.optimizer_a.step()
 
             # for name, parms in self.Hybrid_Actor.d_action_layer.named_parameters():

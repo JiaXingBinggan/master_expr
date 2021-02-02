@@ -125,8 +125,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         with_clk_rewards = torch.where(
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * -1
+            current_basic_rewards[current_with_clk_indexs] * 1e-1,
+            current_basic_rewards[current_with_clk_indexs] * -1e-1
         )
 
         # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
@@ -135,8 +135,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * -1
+            current_basic_rewards[current_without_clk_indexs] * 1e-1,
+            current_basic_rewards[current_without_clk_indexs] * -1e-1
         )
         # without_clk_rewards = current_pretrain_y_preds[
         #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
@@ -323,8 +323,8 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    # gap = args.run_steps // args.record_times
-    gap = 10000
+    gap = args.run_steps // args.record_times
+    # gap = 10000
 
     data_len = len(train_data)
 
@@ -361,7 +361,7 @@ if __name__ == '__main__':
     record_list = {}
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
-    train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
+    train_batch_gen = get_list_data(train_data, args.rl_iter_size, False)# 要不要早停
     # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
     # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_iter_size, num_workers=8, shuffle=1)
     while intime_steps <= args.stop_steps:
@@ -384,7 +384,7 @@ if __name__ == '__main__':
         s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
         transitions = torch.cat(
-            [s_t, return_c_actions, d_q_values, s_t_, rewards],
+            [s_t, c_actions, d_q_values, s_t_, rewards],
             dim=1)
 
         rl_model.store_transition(transitions)
@@ -426,8 +426,8 @@ if __name__ == '__main__':
 
             torch.cuda.empty_cache()
 
-        # if intime_steps >= args.rl_batch_size and intime_steps % 10 == 0:
-        if intime_steps >= args.rl_batch_size:
+        if intime_steps >= args.rl_batch_size and intime_steps % 10 == 0:
+        # if intime_steps >= args.rl_batch_size:
             critic_loss = rl_model.learn()
             tmp_train_ctritics = critic_loss
 
@@ -451,7 +451,7 @@ if __name__ == '__main__':
     #
     # test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
     #                                                                       device)
-    test_predicts, test_auc, test_actions, test_prob_weights = record_list[early_stop_index]
+    test_auc, test_predicts, test_actions, test_prob_weights = record_list[early_stop_index]
 
     # for i in range(args.rl_early_stop_iter):
     #     os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')

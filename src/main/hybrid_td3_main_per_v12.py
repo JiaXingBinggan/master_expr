@@ -384,7 +384,7 @@ if __name__ == '__main__':
         s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
         transitions = torch.cat(
-            [s_t, return_c_actions, d_q_values, s_t_, rewards],
+            [s_t, c_actions, d_q_values, s_t_, rewards],
             dim=1)
 
         rl_model.store_transition(transitions)
