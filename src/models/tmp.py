@@ -9,6 +9,8 @@ from torch.distributions import MultivariateNormal, Categorical
 import datetime
 from torch.distributions import Normal, Categorical, MultivariateNormal
 
+import torch.distributed as dist
+
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -125,7 +127,7 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(-0.005, 0.005)
+            layer.weight.data.uniform_(-0.0005, 0.0005)
             layer.bias.data.fill_(0)
 
 
@@ -138,7 +140,7 @@ class Hybrid_Critic(nn.Module):
 
         deep_input_dims_1 = self.input_dims + self.action_nums * 2
 
-        self.bn_input = nn.BatchNorm1d(self.input_dims)
+        self.bn_input = nn.BatchNorm1d(deep_input_dims_1)
         self.bn_input.weight.data.fill_(1)
         self.bn_input.bias.data.zero_()
 
@@ -163,27 +165,19 @@ class Hybrid_Critic(nn.Module):
 
         self.layers_2.append(nn.Linear(deep_input_dims_2, 1))
 
-        # weight_init(self.layers_1)
-        # weight_init(self.layers_2)
+        weight_init([self.layers_1[-1]])
+        weight_init([self.layers_2[-1]])
 
         self.mlp_1 = nn.Sequential(*self.layers_1)
         self.mlp_2 = nn.Sequential(*self.layers_2)
 
-    def evaluate(self, input, c_actions, d_actions):
+    def forward(self, input):
         obs = self.bn_input(input)
-
         # obs = input
-        c_q_out_1 = self.mlp_1(torch.cat([obs, d_actions, c_actions], dim=-1))
-        c_q_out_2 = self.mlp_2(torch.cat([obs, d_actions, c_actions], dim=-1))
+        c_q_out_1 = self.mlp_1(obs)
+        c_q_out_2 = self.mlp_2(obs)
 
         return c_q_out_1, c_q_out_2
-
-    def evaluate_q_1(self, input, c_actions, d_actions):
-        obs = self.bn_input(input)
-        # obs = input
-        c_q_out_1 = self.mlp_1(torch.cat([obs, d_actions, c_actions], dim=-1))
-
-        return c_q_out_1
 
 
 class Hybrid_Actor(nn.Module):
@@ -207,51 +201,32 @@ class Hybrid_Actor(nn.Module):
             # self.layers.append(nn.Dropout(p=0.2))
             deep_input_dims = neuron_num
 
-        self.c_layers = list()
-        self.c_layers.append(nn.Linear(deep_input_dims, self.action_dims))
-        # self.c_layers.append(nn.BatchNorm1d(self.action_dims))
-        self.c_layers.append(nn.Tanh())
-
-        self.d_layers = list()
-        self.d_layers.append(nn.Linear(deep_input_dims, self.action_dims))
-        # self.d_layers.append(nn.BatchNorm1d(self.action_dims))
-
-        # weight_init(self.layers)
-        weight_init(self.c_layers)
-        weight_init(self.d_layers)
+        self.layers.append(nn.Linear(deep_input_dims, self.action_dims))
+        weight_init([self.layers[-1]])
 
         self.mlp = nn.Sequential(*self.layers)
-        self.c_action_layer = nn.Sequential(*self.c_layers)
-        self.d_action_layer = nn.Sequential(*self.d_layers)
 
     def act(self, input, temprature):
-
         obs = self.bn_input(input)
         # obs = input
         feature_exact = self.mlp(obs)
 
-        c_action_means = self.c_action_layer(feature_exact)
+        c_action_means = torch.tanh(feature_exact)
         ensemble_c_actions = torch.softmax(c_action_means + torch.randn_like(c_action_means) * 0.1, dim=-1)
-        # c_action_means = boltzmann_softmax(c_action_means + torch.normal(c_action_means, 0.1).detach(), temprature)
 
-        d_action_q_values = self.d_action_layer(feature_exact)
-
-        d_action = gumbel_softmax_sample(logits=d_action_q_values,
+        d_action = gumbel_softmax_sample(logits=feature_exact,
                                          temprature=temprature, hard=False)  # 这里d_action_q_values需要再加层噪声吗?
 
         ensemble_d_actions = torch.argmax(d_action, dim=-1) + 1
 
         return c_action_means, ensemble_c_actions, d_action, ensemble_d_actions.view(-1, 1)
 
-    def evaluate(self, input):
+    def forward(self, input):
         obs = self.bn_input(input)
         # obs = input
-        feature_exact = self.mlp(obs)
+        action_values = self.mlp(obs)
 
-        c_actions = self.c_action_layer(feature_exact)
-        d_actions = self.d_action_layer(feature_exact)
-
-        return c_actions, d_actions
+        return action_values
 
 
 def boltzmann_softmax(actions, temprature):
@@ -329,12 +304,12 @@ class Hybrid_TD3_Model():
 
         # 优化器
         self.optimizer_a = torch.optim.Adam(self.Hybrid_Actor.parameters(), lr=self.lr_C_A)
-        self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C, weight_decay=1e-5)
+        self.optimizer_c = torch.optim.Adam(self.Hybrid_Critic.parameters(), lr=self.lr_C)
 
         self.loss_func = nn.MSELoss(reduction='none')
 
         self.learn_iter = 0
-        self.policy_freq = 5
+        self.policy_freq = 10
 
         self.temprature = 2.0
         self.temprature_max = 2.0
@@ -354,35 +329,36 @@ class Hybrid_TD3_Model():
 
         self.memory.add(td_errors, transitions.detach())
 
-    def choose_action(self, state, random):
+    def choose_action(self, state):
         self.Hybrid_Actor.eval()
         with torch.no_grad():
             c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions = self.Hybrid_Actor.act(state,
-                                                                                                  self.temprature)
+                                                                                                  self.temprature_max)
 
-            if random:
-                c_actions = torch.clamp(torch.randn_like(c_actions), -1, 1)
-                ensemble_c_actions = torch.softmax(c_actions, dim=-1)
-
-                d_q_values = torch.softmax(torch.randn_like(d_q_values), dim=-1)  # 因为是直接生成的
-
-                ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
-
-                return c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions.view(-1, 1)
+            # if random:
+            #     c_actions = torch.clamp(torch.randn_like(c_actions), -1, 1)
+            #     ensemble_c_actions = torch.softmax(c_actions, dim=-1)
+            #
+            #     d_q_values = torch.softmax(torch.randn_like(d_q_values), dim=-1)  # 因为是直接生成的
+            #
+            #     ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
+            #
+            #     return c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions.view(-1, 1)
 
         return c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions
 
     def choose_best_action(self, state):
-        self.Hybrid_Actor.eval()
+        self.Hybrid_Actor.train()
         with torch.no_grad():
-            c_action_means, d_q_values = self.Hybrid_Actor.evaluate(state)
+            action_values = self.Hybrid_Actor.forward(state)
 
-        ensemble_c_actions = torch.softmax(c_action_means, dim=-1)
+        ensemble_c_actions = torch.softmax(torch.tanh(action_values), dim=-1)
 
-        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=d_q_values, temprature=self.temprature_eva, hard=True), dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=action_values,
+                                                                temprature=self.temprature_eva, hard=True), dim=-1) + 1
         # ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
 
-        return ensemble_d_actions.view(-1, 1), c_action_means, ensemble_c_actions
+        return ensemble_d_actions.view(-1, 1), action_values, ensemble_c_actions
 
     def soft_update(self, net, net_target):
         for param_target, param in zip(net_target.parameters(), net.parameters()):
@@ -445,10 +421,10 @@ class Hybrid_TD3_Model():
     def learn(self):
         self.learn_iter += 1
 
-        # self.Hybrid_Actor.train()
-        # self.Hybrid_Actor_.train()
-        # self.Hybrid_Critic.train()
-        # self.Hybrid_Critic_.train()
+        self.Hybrid_Actor.train()
+        self.Hybrid_Actor_.train()
+        self.Hybrid_Critic.train()
+        self.Hybrid_Critic_.train()
 
         # sample
         choose_idx, batch_memory, ISweights = self.memory.stochastic_sample(self.batch_size)
@@ -468,23 +444,26 @@ class Hybrid_TD3_Model():
         b_s_ = batch_memory[:, -self.input_dims - 1: -1] # embedding_layer.forward(batch_memory_states)
 
         with torch.no_grad():
-            c_actions_means_next, d_actions_q_values_next = self.Hybrid_Actor_.evaluate(b_s_)
+            action_values_next = self.Hybrid_Actor_.forward(b_s_)
 
-            next_d_actions = gumbel_softmax_sample(logits=d_actions_q_values_next,
+            next_d_actions = gumbel_softmax_sample(logits=action_values_next,
                                                    temprature=self.temprature, hard=False)
 
             # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.softmax(c_actions_means_next, dim=-1))
             # next_c_actions = torch.softmax(c_actions_means_next + torch.normal(c_actions_means_next, 0.2), dim=-1)
-            next_c_actions = self.to_next_state_c_actions(next_d_actions, c_actions_means_next)
-            # next_c_actions = c_actions_means_next + torch.clamp(torch.randn_like(c_actions_means_next)* 0.2, -0.5, 0.5)
+            next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.tanh(action_values_next))
+            # next_c_actions = torch.tanh(action_values_next) + torch.clamp(torch.randn_like(torch.tanh(action_values_next)) * 0.2, -0.5, 0.5)
+
+            next_obs = torch.cat([b_s_, next_c_actions, next_d_actions], dim=-1)
 
             q1_target, q2_target = \
-                self.Hybrid_Critic_.evaluate(b_s_, next_c_actions, next_d_actions)
+                self.Hybrid_Critic_.forward(next_obs)
 
             q_target = torch.min(q1_target, q2_target)
             q_target = b_r + self.gamma * q_target
 
-        q1, q2 = self.Hybrid_Critic.evaluate(b_s, b_c_a, b_d_a)
+        obs = torch.cat([b_s, b_c_a, b_d_a], dim=-1)
+        q1, q2 = self.Hybrid_Critic.forward(obs)
 
         critic_td_error = (q_target * 2 - q1 - q2).detach() / 2
         critic_loss = torch.mul(ISweights,
@@ -495,7 +474,8 @@ class Hybrid_TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=40, norm_type=2)
+        # avg_gradients(self.Hybrid_Critic)
+        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), 0.5)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -503,32 +483,30 @@ class Hybrid_TD3_Model():
         self.memory.batch_update(choose_idx, critic_td_error)
 
         if self.learn_iter % self.policy_freq == 0:
-            c_actions_means, d_actions_q_values = self.Hybrid_Actor.evaluate(b_s)
+            action_values = self.Hybrid_Actor.forward(b_s)
 
-            d_actions_q_values_ = gumbel_softmax_sample(logits=d_actions_q_values, temprature=self.temprature_eva,
+            d_actions_q_values_ = gumbel_softmax_sample(logits=action_values, temprature=self.temprature_min,
                                                         hard=False)
-            c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, c_actions_means)
-            # c_actions_means_ = c_actions_means
+            # d_actions_q_values_ = onehot_from_logits(logits=action_values)
+            # c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, torch.tanh(action_values))
+            c_actions_means_ = torch.tanh(action_values)
 
             # Hybrid_Actor
-            # c_action_softmax = torch.softmax(c_actions_means, dim=-1)
-            # d_action_softmax = torch.softmax(d_actions_q_values, dim=-1)
-            # c_reg = -(c_actions_means_.log().mean())
-            # d_reg = -(d_actions_q_values_.log().mean())
+            reg = (action_values ** 2).mean()
+            # reg = torch.mul(action_values, action_values.log()).mean()
+            obs = torch.cat([b_s, c_actions_means_, d_actions_q_values_], dim=-1)
+            critic_values = self.Hybrid_Critic.forward(obs)
+            a_critic_value = critic_values[0]
 
-            c_reg = torch.pow(c_actions_means, 2).mean()
-            d_reg = torch.pow(d_actions_q_values, 2).mean()
-
-            # print(d_actions_q_values_, c_actions_means_)
-            a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -a_critic_value.mean() + (c_reg + d_reg) * 1e-2
-
+            c_a_loss = -a_critic_value.mean() + reg
+            print(c_a_loss, reg)
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=40, norm_type=2)
+            # avg_gradients(self.Hybrid_Actor)
+            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), 0.5)
             self.optimizer_a.step()
 
             # for name, parms in self.Hybrid_Actor.d_action_layer.named_parameters():
@@ -552,3 +530,10 @@ class OrnsteinUhlenbeckNoise:
             self.sigma * np.sqrt(self.dt) * np.random.normal(size=self.mu.shape)
         self.x_prev = x
         return x
+
+def avg_gradients(model):
+    print(dist.get_world_size())
+    size = float(dist.get_world_size())
+    for param in model.parameters():
+        dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM, group=0)
+        param.grad.data /= size

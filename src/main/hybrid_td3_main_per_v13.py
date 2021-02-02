@@ -275,7 +275,7 @@ def get_dataset(args):
     return train_data, val_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, val_data, test_data = get_dataset(args)
@@ -323,8 +323,8 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    gap = args.run_steps // args.record_times
-    # gap = 10000
+    gap = args.stop_steps // args.record_times
+    # gap = 1000
 
     data_len = len(train_data)
 
@@ -384,7 +384,7 @@ if __name__ == '__main__':
         s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
         transitions = torch.cat(
-            [s_t, c_actions, d_q_values, s_t_, rewards],
+            [s_t, return_c_actions, d_q_values, s_t_, rewards],
             dim=1)
 
         rl_model.store_transition(transitions)
@@ -393,7 +393,7 @@ if __name__ == '__main__':
             val_auc, val_predicts, val_rewards, val_actions, val_prob_weights = test(rl_model, args.ensemble_nums, val_data_loader, device)
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
 
-            record_list.setdefault(record_param_steps % args.rl_early_stop_iter, [auc, predicts, actions, prob_weights])
+            record_list[np.mod(record_param_steps, args.rl_early_stop_iter)] = [auc, predicts, actions, prob_weights]
 
             logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, test auc {}, [{}s]'.format(
                 args.rl_model_name, intime_steps, val_auc, test_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
@@ -410,7 +410,7 @@ if __name__ == '__main__':
                                       rl_model.memory.beta + gap *
                                        (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
-            early_aucs.append([record_param_steps, auc])
+            early_aucs.append([record_param_steps, val_auc])
             early_rewards.append([record_param_steps, test_rewards])
             # torch.save(rl_model.Hybrid_Actor.state_dict(),
             #            args.save_param_dir + args.campaign_id + args.rl_model_name + str(
@@ -451,6 +451,7 @@ if __name__ == '__main__':
     #
     # test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
     #                                                                       device)
+
     test_auc, test_predicts, test_actions, test_prob_weights = record_list[early_stop_index]
 
     # for i in range(args.rl_early_stop_iter):
@@ -462,11 +463,11 @@ if __name__ == '__main__':
 
     neuron_nums_str = '_'.join(map(str, args.neuron_nums))
 
-    prob_weights_df = pd.DataFrame(data=test_prob_weights)
+    prob_weights_df = pd.DataFrame(data=test_prob_weights.cpu().numpy())
     prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
                            + args.sample_type + neuron_nums_str + '.csv', index=None)
 
-    actions_df = pd.DataFrame(data=test_actions)
+    actions_df = pd.DataFrame(data=test_actions.cpu().numpy())
     actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
                       + args.sample_type + '_' + neuron_nums_str + '.csv', index=None)
 

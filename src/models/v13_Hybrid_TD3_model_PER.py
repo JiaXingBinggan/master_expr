@@ -9,6 +9,8 @@ from torch.distributions import MultivariateNormal, Categorical
 import datetime
 from torch.distributions import Normal, Categorical, MultivariateNormal
 
+import torch.distributed as dist
+
 
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -353,14 +355,15 @@ class Hybrid_TD3_Model():
         return c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions
 
     def choose_best_action(self, state):
-        self.Hybrid_Actor.eval()
+        self.Hybrid_Actor.train()
         with torch.no_grad():
             action_values = self.Hybrid_Actor.evaluate(state)
 
-        ensemble_c_actions = torch.softmax(action_values, dim=-1)
+        ensemble_c_actions = torch.softmax(torch.tanh(action_values), dim=-1)
 
-        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=action_values, temprature=self.temprature_eva, hard=True), dim=-1) + 1
-        # ensemble_d_actions = torch.argmax(d_q_values, dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=action_values,
+                                                                temprature=self.temprature_eva, hard=True), dim=-1) + 1
+        # ensemble_d_actions = torch.argmax(action_values, dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), action_values, ensemble_c_actions
 
@@ -455,8 +458,8 @@ class Hybrid_TD3_Model():
 
             # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.softmax(c_actions_means_next, dim=-1))
             # next_c_actions = torch.softmax(c_actions_means_next + torch.normal(c_actions_means_next, 0.2), dim=-1)
-            # next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.tanh(action_values_next))
-            next_c_actions = torch.tanh(action_values_next) + torch.clamp(torch.randn_like(torch.tanh(action_values_next)) * 0.2, -0.5, 0.5)
+            next_c_actions = self.to_next_state_c_actions(next_d_actions, torch.tanh(action_values_next))
+            # next_c_actions = torch.tanh(action_values_next) + torch.clamp(torch.randn_like(torch.tanh(action_values_next)) * 0.2, -0.5, 0.5)
 
             q1_target, q2_target = \
                 self.Hybrid_Critic_.evaluate(b_s_, next_c_actions, next_d_actions)
@@ -475,6 +478,7 @@ class Hybrid_TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
+        # avg_gradients(self.Hybrid_Critic)
         nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=40, norm_type=2)
         self.optimizer_c.step()
 
@@ -485,24 +489,25 @@ class Hybrid_TD3_Model():
         if self.learn_iter % self.policy_freq == 0:
             action_values = self.Hybrid_Actor.evaluate(b_s)
 
-            d_actions_q_values_ = gumbel_softmax_sample(logits=action_values, temprature=self.temprature_min,
+            d_actions_q_values_ = gumbel_softmax_sample(logits=action_values, temprature=self.temprature_eva,
                                                         hard=False)
             # d_actions_q_values_ = onehot_from_logits(logits=action_values)
-            # c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, torch.tanh(action_values))
-            c_actions_means_ = torch.tanh(action_values)
+            c_actions_means_ = self.to_current_state_c_actions(d_actions_q_values_, torch.tanh(action_values))
+            # c_actions_means_ = torch.tanh(action_values)
 
             # Hybrid_Actor
-            reg = torch.pow(action_values, 2).mean()
+            reg = (action_values ** 2).mean()
             # reg = torch.mul(action_values, action_values.log()).mean()
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
 
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
             c_a_loss = -a_critic_value.mean() + reg
-
+            # print(c_a_loss, reg)
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
+            # avg_gradients(self.Hybrid_Actor)
             nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=40, norm_type=2)
             self.optimizer_a.step()
 
@@ -527,3 +532,10 @@ class OrnsteinUhlenbeckNoise:
             self.sigma * np.sqrt(self.dt) * np.random.normal(size=self.mu.shape)
         self.x_prev = x
         return x
+
+def avg_gradients(model):
+    print(dist.get_world_size())
+    size = float(dist.get_world_size())
+    for param in model.parameters():
+        dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM, group=0)
+        param.grad.data /= size
