@@ -125,8 +125,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         with_clk_rewards = torch.where(
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1e-1,
-            current_basic_rewards[current_with_clk_indexs] * -1e-1
+            current_basic_rewards[current_with_clk_indexs] * 1,
+            current_basic_rewards[current_with_clk_indexs] * -1
         )
 
         # with_clk_rewards = torch.log(current_y_preds[current_with_clk_indexs])
@@ -134,8 +134,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1e-1,
-            current_basic_rewards[current_without_clk_indexs] * -1e-1
+            current_basic_rewards[current_without_clk_indexs] * 1,
+            current_basic_rewards[current_without_clk_indexs] * -1
         )
 
         # without_clk_rewards = torch.log(torch.ones_like(labels[current_without_clk_indexs]).float() -
@@ -263,7 +263,7 @@ def get_dataset(args):
     return train_data, val_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, val_data, test_data = get_dataset(args)
@@ -349,7 +349,7 @@ if __name__ == '__main__':
     record_list = {}
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
-    train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
+    train_batch_gen = get_list_data(train_data, args.rl_iter_size, False)# 要不要早停
     # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
     # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_iter_size, num_workers=8, shuffle=1)
     while intime_steps <= args.stop_steps:
@@ -453,31 +453,31 @@ if __name__ == '__main__':
 
     prob_weights_df = pd.DataFrame(data=test_prob_weights.cpu().numpy())
     prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
-                           + args.sample_type + neuron_nums_str + '.csv', index=None)
+                           + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
     actions_df = pd.DataFrame(data=test_actions.cpu().numpy())
     actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
-                      + args.sample_type + '_' + neuron_nums_str + '.csv', index=None)
+                      + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
     valid_aucs_df = pd.DataFrame(data=val_aucs)
     valid_aucs_df.to_csv(submission_path + 'val_aucs_' + str(args.ensemble_nums) + '_'
-                         + args.sample_type + '_' + neuron_nums_str + '.csv', index=None)
+                         + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
     val_rewards_records = {'rewards': val_rewards_records, 'timesteps': timesteps}
     val_rewards_records_df = pd.DataFrame(data=val_rewards_records)
     val_rewards_records_df.to_csv(submission_path + 'val_reward_records_' + str(args.ensemble_nums) + '_'
-                                  + args.sample_type + '_' + neuron_nums_str + '.csv', index=None)
+                                  + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
     train_critics_df = pd.DataFrame(data=train_critics)
     train_critics_df.to_csv(submission_path + 'train_critics_' + str(args.ensemble_nums) + '_'
-                            + args.sample_type + '_' + neuron_nums_str + '.csv', index=None)
+                            + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
     final_subs = np.mean(test_predict_arrs, axis=0)
     final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
 
     rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
     rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
-                                + args.sample_type + '_' + neuron_nums_str + '.csv')
+                                + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv')
 
     rl_ensemble_aucs = [[final_auc]]
     rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
