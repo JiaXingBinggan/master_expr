@@ -125,36 +125,24 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         with_clk_rewards = torch.where(
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * -1
+            current_basic_rewards[current_with_clk_indexs] * 1e-1,
+            current_basic_rewards[current_with_clk_indexs] * -1e-1
         )
 
-        # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
-        #         current_with_clk_indexs].mean(dim=1).view(-1, 1)
+        # with_clk_rewards = torch.log(current_y_preds[current_with_clk_indexs])
 
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * -1
+            current_basic_rewards[current_without_clk_indexs] * 1e-1,
+            current_basic_rewards[current_without_clk_indexs] * -1e-1
         )
-        # without_clk_rewards = current_pretrain_y_preds[
-        #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
 
-        # print(-labels[with_action_indexs].float() * current_y_preds - (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) *
-        #       (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - current_y_preds).log())
-        # bce_loss = -labels[with_action_indexs].float() * current_y_preds.log() - \
-        #            (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) * (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - current_y_preds).log()
-
-        # if len(current_with_clk_indexs) > 0:
-        # print('with clk', current_y_preds[current_with_clk_indexs], current_y_preds[current_with_clk_indexs].log())
-        #     print('clk', bce_loss[current_with_clk_indexs])
-
-        # print('without clk', current_y_preds[current_without_clk_indexs], torch.exp(-current_y_preds[current_without_clk_indexs]))
+        # without_clk_rewards = torch.log(torch.ones_like(labels[current_without_clk_indexs]).float() -
+        #                        current_y_preds[[current_without_clk_indexs]])
 
         current_basic_rewards[current_with_clk_indexs] = with_clk_rewards
         current_basic_rewards[current_without_clk_indexs] = without_clk_rewards
-        # print(current_basic_rewards[current_without_clk_indexs])
 
         rewards[with_action_indexs, :] = current_basic_rewards
 
@@ -323,8 +311,8 @@ if __name__ == '__main__':
 
     model_dict_len = args.ensemble_nums
 
-    # gap = args.run_steps // args.record_times
-    gap = 10000
+    gap = args.run_steps // args.record_times
+    # gap = 10000
 
     data_len = len(train_data)
 
@@ -397,21 +385,21 @@ if __name__ == '__main__':
             record_list[np.mod(record_param_steps, args.rl_early_stop_iter)] = [auc, predicts, actions, prob_weights]
 
             logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, test auc {}, [{}s]'.format(
-                args.rl_model_name, intime_steps, val_auc, test_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
+                args.rl_model_name, intime_steps, val_auc, val_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
             val_rewards_records.append(val_rewards)
             timesteps.append(intime_steps)
             val_aucs.append(val_auc)
 
             train_critics.append(tmp_train_ctritics)
 
-            rl_model.temprature = max(rl_model.temprature_min,
-                                       rl_model.temprature - gap *
-                                       (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
-            rl_model.memory.beta = min(rl_model.memory.beta_max,
-                                      rl_model.memory.beta + gap *
-                                       (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
+            # rl_model.temprature = max(rl_model.temprature_min,
+            #                            rl_model.temprature - gap *
+            #                            (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
+            # rl_model.memory.beta = min(rl_model.memory.beta_max,
+            #                           rl_model.memory.beta + gap *
+            #                            (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
-            early_aucs.append([record_param_steps, auc])
+            early_aucs.append([record_param_steps, val_auc])
             early_rewards.append([record_param_steps, test_rewards])
             torch.save(rl_model.Hybrid_Actor.state_dict(),
                        args.save_param_dir + args.campaign_id + args.rl_model_name + str(
@@ -420,15 +408,16 @@ if __name__ == '__main__':
             record_param_steps += 1
             if args.run_steps <= intime_steps <= args.stop_steps:
                 if eva_stopping(early_rewards, args):
-                    max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
+                    max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][
+                        0]
                     early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
                     is_early_stop = True
                     break
 
             torch.cuda.empty_cache()
 
-        # if intime_steps >= args.rl_batch_size and intime_steps % 10 == 0:
-        if intime_steps >= args.rl_batch_size:
+        if intime_steps >= args.rl_batch_size and intime_steps % 10 == 0:
+        # if intime_steps >= args.rl_batch_size:
             critic_loss = rl_model.learn()
             tmp_train_ctritics = critic_loss
 
@@ -463,11 +452,11 @@ if __name__ == '__main__':
 
     neuron_nums_str = '_'.join(map(str, args.neuron_nums))
 
-    prob_weights_df = pd.DataFrame(data=test_prob_weights)
+    prob_weights_df = pd.DataFrame(data=test_prob_weights.cpu().numpy())
     prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
                            + args.sample_type + neuron_nums_str + '.csv', index=None)
 
-    actions_df = pd.DataFrame(data=test_actions)
+    actions_df = pd.DataFrame(data=test_actions.cpu().numpy())
     actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
                       + args.sample_type + '_' + neuron_nums_str + '.csv', index=None)
 

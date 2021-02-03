@@ -129,8 +129,7 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
             current_basic_rewards[current_with_clk_indexs] * -1e-1
         )
 
-        # with_clk_rewards = current_y_preds[current_with_clk_indexs] - current_pretrain_y_preds[
-        #         current_with_clk_indexs].mean(dim=1).view(-1, 1)
+        # with_clk_rewards = torch.log(current_y_preds[current_with_clk_indexs])
 
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
@@ -138,23 +137,12 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
             current_basic_rewards[current_without_clk_indexs] * 1e-1,
             current_basic_rewards[current_without_clk_indexs] * -1e-1
         )
-        # without_clk_rewards = current_pretrain_y_preds[
-        #         current_without_clk_indexs].mean(dim=1).view(-1, 1) - current_y_preds[current_without_clk_indexs]
 
-        # print(-labels[with_action_indexs].float() * current_y_preds - (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) *
-        #       (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - current_y_preds).log())
-        # bce_loss = -labels[with_action_indexs].float() * current_y_preds.log() - \
-        #            (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - labels[with_action_indexs].float()) * (torch.ones(size=[len(with_action_indexs), 1]).cuda().float() - current_y_preds).log()
-
-        # if len(current_with_clk_indexs) > 0:
-        # print('with clk', current_y_preds[current_with_clk_indexs], current_y_preds[current_with_clk_indexs].log())
-        #     print('clk', bce_loss[current_with_clk_indexs])
-
-        # print('without clk', current_y_preds[current_without_clk_indexs], torch.exp(-current_y_preds[current_without_clk_indexs]))
+        # without_clk_rewards = torch.log(torch.ones_like(labels[current_without_clk_indexs]).float() -
+        #                        current_y_preds[[current_without_clk_indexs]])
 
         current_basic_rewards[current_with_clk_indexs] = with_clk_rewards
         current_basic_rewards[current_without_clk_indexs] = without_clk_rewards
-        # print(current_basic_rewards[current_without_clk_indexs])
 
         rewards[with_action_indexs, :] = current_basic_rewards
 
@@ -361,7 +349,7 @@ if __name__ == '__main__':
     record_list = {}
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
-    train_batch_gen = get_list_data(train_data, args.rl_iter_size, False)# 要不要早停
+    train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
     # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
     # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_iter_size, num_workers=8, shuffle=1)
     while intime_steps <= args.stop_steps:
@@ -396,19 +384,19 @@ if __name__ == '__main__':
             record_list[np.mod(record_param_steps, args.rl_early_stop_iter)] = [auc, predicts, actions, prob_weights]
 
             logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, test auc {}, [{}s]'.format(
-                args.rl_model_name, intime_steps, val_auc, test_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
+                args.rl_model_name, intime_steps, val_auc, val_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
             val_rewards_records.append(val_rewards)
             timesteps.append(intime_steps)
             val_aucs.append(val_auc)
 
             train_critics.append(tmp_train_ctritics)
 
-            rl_model.temprature = max(rl_model.temprature_min,
-                                       rl_model.temprature - gap *
-                                       (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
-            rl_model.memory.beta = min(rl_model.memory.beta_max,
-                                      rl_model.memory.beta + gap *
-                                       (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
+            # rl_model.temprature = max(rl_model.temprature_min,
+            #                            rl_model.temprature - gap *
+            #                            (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
+            # rl_model.memory.beta = min(rl_model.memory.beta_max,
+            #                           rl_model.memory.beta + gap *
+            #                            (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
             early_aucs.append([record_param_steps, val_auc])
             early_rewards.append([record_param_steps, test_rewards])

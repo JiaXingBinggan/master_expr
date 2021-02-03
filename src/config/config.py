@@ -64,21 +64,21 @@ def init_parser(campaign_id):
 
     # for RL training
     parser.add_argument('--rl_model_name', default='H_RL_CTR')
-    parser.add_argument('--init_lr_a', type=float, default=3e-4)
-    parser.add_argument('--init_lr_c', type=float, default=3e-4)
-    parser.add_argument('--neuron_nums', type=list, default=[200, 300, 100]) # 1458 and 2259 [64], [64, 64], [32, 64, 16]
+    parser.add_argument('--init_lr_a', type=float, default=3e-5)
+    parser.add_argument('--init_lr_c', type=float, default=1e-4)
+    parser.add_argument('--neuron_nums', type=list, default=[32, 64, 16]) # 1458 and 2259 [64], [64, 64], [32, 64, 16]
     # 3386 [64], [64, 32], [32, 64, 16]
-    parser.add_argument('--tau', type=float, default=0.0005)
+    parser.add_argument('--tau', type=float, default=0.0001)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
-    parser.add_argument('--rl_batch_size', type=int, default=128)
+    parser.add_argument('--rl_batch_size', type=int, default=32)
     parser.add_argument('--rl_iter_size', type=int, default=4)
     parser.add_argument('--rl_train_iters', type=int, default=128)
-    parser.add_argument('--rl_gen_batch_size', type=int, default=4096 * 64)
-    parser.add_argument('--memory_size', type=int, default=1000000) # 感觉需要再调调,100000
+    parser.add_argument('--rl_gen_batch_size', type=int, default=4096 * 128)
+    parser.add_argument('--memory_size', type=int, default=100000) # 感觉需要再调调,100000
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-3)
-    parser.add_argument('--run_steps', type=float, default=8e5)
-    parser.add_argument('--stop_steps', type=float, default=1e6)
+    parser.add_argument('--run_steps', type=float, default=1e5)
+    parser.add_argument('--stop_steps', type=float, default=1e5)
     parser.add_argument('--record_times', type=int, default=200)
     parser.add_argument('--rl_early_stop_iter', type=int, default=10)
 

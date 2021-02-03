@@ -24,7 +24,7 @@ class Memory(object):
         self.transition_lens = transition_lens  # 存储的数据长度
         self.epsilon = 1e-3  # 防止出现zero priority
         self.alpha = 0.6  # 取值范围(0,1)，表示td error对priority的影响
-        self.beta = 0.2  # important sample， 从初始值到1
+        self.beta = 0.4  # important sample， 从初始值到1
         self.beta_min = 0.4
         self.beta_max = 1.0
         self.beta_increment_per_sampling = 0.0001
@@ -81,7 +81,7 @@ class Memory(object):
             sample_indexs = torch.Tensor(
                 np.random.choice(self.memory_counter, batch_size, p=P, replace=False)).long().to(self.device)
 
-        # self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
+        self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
         # print(self.beta)
         batch = self.memory[sample_indexs]
         choose_priorities = priorities[sample_indexs]
@@ -125,7 +125,7 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(-0.005, 0.005)
+            layer.weight.data.uniform_(-0.003, 0.003)
             layer.bias.data.fill_(0)
 
 
@@ -218,7 +218,7 @@ class Hybrid_Actor(nn.Module):
 
         # weight_init(self.layers)
         weight_init(self.c_layers)
-        weight_init(self.d_layers)
+        # weight_init(self.d_layers)
 
         self.mlp = nn.Sequential(*self.layers)
         self.c_action_layer = nn.Sequential(*self.c_layers)
@@ -334,14 +334,14 @@ class Hybrid_TD3_Model():
         self.loss_func = nn.MSELoss(reduction='none')
 
         self.learn_iter = 0
-        self.policy_freq = 5
+        self.policy_freq = 10
 
         self.temprature = 2.0
         self.temprature_max = 2.0
         self.temprature_min = 0.5
 
         self.temprature_eva = 0.1
-        self.anneal_rate = 3e-8
+        self.anneal_rate = 0.0001
 
     def store_transition(self, transitions):  # 所有的值都应该弄成float
         if torch.max(self.memory.prioritys_) == 0.:
@@ -355,7 +355,7 @@ class Hybrid_TD3_Model():
         self.memory.add(td_errors, transitions.detach())
 
     def choose_action(self, state, random):
-        self.Hybrid_Actor.eval()
+        # self.Hybrid_Actor.eval()
         with torch.no_grad():
             c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions = self.Hybrid_Actor.act(state,
                                                                                                   self.temprature)
@@ -373,7 +373,7 @@ class Hybrid_TD3_Model():
         return c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions
 
     def choose_best_action(self, state):
-        self.Hybrid_Actor.eval()
+        # self.Hybrid_Actor.eval()
         with torch.no_grad():
             c_action_means, d_q_values = self.Hybrid_Actor.evaluate(state)
 
@@ -495,7 +495,7 @@ class Hybrid_TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=40, norm_type=2)
+        nn.utils.clip_grad_norm_(self.Hybrid_Critic.parameters(), max_norm=100, norm_type=2)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -522,13 +522,13 @@ class Hybrid_TD3_Model():
             # print(d_actions_q_values_, c_actions_means_)
             a_critic_value = self.Hybrid_Critic.evaluate_q_1(b_s, c_actions_means_, d_actions_q_values_)
             # c_a_loss = -torch.mean(a_critic_value - torch.mean(torch.add(c_reg, d_reg), dim=-1).reshape([-1, 1]) * 1e-2)
-            c_a_loss = -a_critic_value.mean() + (c_reg + d_reg) * 1e-2
+            c_a_loss = -a_critic_value.mean() + (c_reg + d_reg)
 
             # c_a_loss = (ISweights * ( - a_critic_value)).mean() + (c_reg + d_reg) * 1e-2
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=40, norm_type=2)
+            nn.utils.clip_grad_norm_(self.Hybrid_Actor.parameters(), max_norm=100, norm_type=2)
             self.optimizer_a.step()
 
             # for name, parms in self.Hybrid_Actor.d_action_layer.named_parameters():
@@ -537,6 +537,8 @@ class Hybrid_TD3_Model():
 
             self.soft_update(self.Hybrid_Critic, self.Hybrid_Critic_)
             self.soft_update(self.Hybrid_Actor, self.Hybrid_Actor_)
+
+        self.temprature = max(self.temprature_min, self.temprature - self.anneal_rate)
 
         return critic_loss_r
 
