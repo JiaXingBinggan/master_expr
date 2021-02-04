@@ -90,7 +90,7 @@ def to_libsvm_encode(datapath, sample_type):
     feature_index = datapath + 'feat.ctr.' + sample_type + '.txt'
 
     field = ['hour', 'weekday', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
-             'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser', 'usertag']
+             'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser']
 
     table = collections.defaultdict(lambda: 0)
 
@@ -530,11 +530,11 @@ if __name__ == '__main__':
     to_libsvm_encode(data_path, 'all')
 
     # down denotes down sample, rand denotes random sample
-    down_sample(data_path)
-    to_libsvm_encode(data_path, 'down')
-
-    rand_sample(data_path)
-    to_libsvm_encode(data_path, 'rand')
+    # down_sample(data_path)
+    # to_libsvm_encode(data_path, 'down')
+    #
+    # rand_sample(data_path)
+    # to_libsvm_encode(data_path, 'rand')
 
 
 

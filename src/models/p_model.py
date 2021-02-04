@@ -38,7 +38,7 @@ class LR(nn.Module):
                  output_dim=1):
         super(LR, self).__init__()
         self.linear = nn.Embedding(feature_nums, output_dim)
-        nn.init.xavier_uniform_(self.linear.weight.data)
+        # nn.init.xavier_uniform_(self.linear.weight.data)
 
         self.bias = nn.Parameter(torch.zeros((output_dim,)))
 

@@ -66,7 +66,7 @@ def init_parser(campaign_id):
     parser.add_argument('--rl_model_name', default='H_RL_CTR')
     parser.add_argument('--init_lr_a', type=float, default=3e-4)
     parser.add_argument('--init_lr_c', type=float, default=3e-4)
-    parser.add_argument('--neuron_nums', type=list, default=[200, 300, 100]) # 1458 and 2259 [64], [64, 64], [32, 64, 16]
+    parser.add_argument('--neuron_nums', type=list, default=[200, 100]) # 1458 and 2259 [64], [64, 64], [32, 64, 16]
     # 3386 [64], [64, 32], [32, 64, 16]
     parser.add_argument('--tau', type=float, default=0.0005)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
@@ -88,7 +88,7 @@ def init_parser(campaign_id):
     if args.ensemble_nums == 3:
         args.ensemble_models = 'LR,FM,FNN'
     elif args.ensemble_nums == 5:
-        args.ensemble_models = 'LR,FM,IPNN,DeepFM,DCN'
+        args.ensemble_models = 'FM'
     elif args.ensemble_nums == 7:
         args.ensemble_models = 'LR,FM,IPNN,OPNN,DeepFM,W&D,DCN,AFM'
 
