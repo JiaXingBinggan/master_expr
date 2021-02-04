@@ -177,9 +177,10 @@ def main(model, model_name, all_train_data_loader, train_data_loader, val_data_l
     for i in range(args.early_stop_iter):
         os.remove(args.save_param_dir + args.campaign_id + model_name + str(i) + args.sample_type + '.pth')
 
-    train_predicts, train_auc = submission(test_model, all_train_data_loader, device)
+    train_predicts, train_auc = submission(test_model, train_data_loader, device)
+    val_predicts, val_auc = submission(test_model, val_data_loader, device)
 
-    return test_predicts, train_predicts
+    return test_predicts, train_predicts, val_predicts
 
 
 def eva_stopping(valid_aucs, valid_losses, type, args):  # early stopping
@@ -242,7 +243,7 @@ def get_dataset(args):
 
 # 用于预训练传统预测点击率模型
 if __name__ == '__main__':
-    campaign_id = '2259/' # 1458, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/' # 1458, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     train_fm, train_data, val_data, test_data, field_nums, feature_nums = get_dataset(args)
 
@@ -286,10 +287,12 @@ if __name__ == '__main__':
 
     test_predict_arr_dicts = {}
     train_predict_arr_dicts = {}
+    val_predict_arr_dicts = {}
 
     for model_name in choose_models:
         test_predict_arr_dicts.setdefault(model_name, [])
         train_predict_arr_dicts.setdefault(model_name, [])
+        val_predict_arr_dicts.setdefault(model_name, [])
 
     all_train_dataset = Data.libsvm_dataset(train_fm[:, 1:], train_fm[:, 0])
     all_train_data_loader = torch.utils.data.DataLoader(all_train_dataset, batch_size=args.test_batch_size, num_workers=8)
@@ -311,13 +314,16 @@ if __name__ == '__main__':
             FM_pretain_args = torch.load(args.save_param_dir + args.campaign_id + 'FM_' + args.sample_type + '_best.pth')
             model.load_embedding(FM_pretain_args)
 
-        current_model_test_predicts, current_model_train_predicts = main(model, model_name, all_train_data_loader, train_data_loader,
+        current_model_test_predicts, current_model_train_predicts, current_model_val_predicts = main(model, model_name, all_train_data_loader, train_data_loader,
                                                                           val_data_loader, test_data_loader,
                                                                           optimizer, loss, device, args)
 
         test_predict_arr_dicts[model_name].append(current_model_test_predicts)
 
         train_predict_arr_dicts[model_name].append(current_model_train_predicts)
+        
+        val_predict_arr_dicts[model_name].append(current_model_val_predicts)
+
 
     for key in test_predict_arr_dicts.keys():
         submission_path = args.data_path + args.dataset_name + args.campaign_id + key + '/' # ctr 预测结果存放文件夹位置
@@ -346,11 +352,19 @@ if __name__ == '__main__':
 
     for key in train_predict_arr_dicts.keys():
         train_predict_arr_dicts[key] = np.mean(train_predict_arr_dicts[key], axis=0).flatten().tolist()
-    train_predict_arr_dicts['label'] = train_fm[:, 0].tolist()
+    train_predict_arr_dicts['label'] = train_data[:, 0].tolist()
 
     train_predict_df = pd.DataFrame(data=train_predict_arr_dicts)
     train_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
                             + 'train.rl_ctr.' + args.sample_type + '.txt', index=None)
+    
+    for key in val_predict_arr_dicts.keys():
+        val_predict_arr_dicts[key] = np.mean(val_predict_arr_dicts[key], axis=0).flatten().tolist()
+    val_predict_arr_dicts['label'] = val_data[:, 0].tolist()
+
+    val_predict_df = pd.DataFrame(data=val_predict_arr_dicts)
+    val_predict_df.to_csv(args.data_path + args.dataset_name + args.campaign_id
+                            + 'val.rl_ctr.' + args.sample_type + '.txt', index=None)
     
     for key in test_predict_arr_dicts.keys():
         test_predict_arr_dicts[key] = np.mean(test_predict_arr_dicts[key], axis=0).flatten().tolist()

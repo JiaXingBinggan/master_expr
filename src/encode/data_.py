@@ -89,8 +89,8 @@ def to_libsvm_encode(datapath, sample_type):
     test_encode = datapath + 'test.ctr.' + sample_type + '.txt'
     feature_index = datapath + 'feat.ctr.' + sample_type + '.txt'
 
-    field = ['hour', 'weekday', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
-             'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser']
+    field = ['weekday', 'hour', 'useragent', 'IP', 'city', 'adexchange', 'domain', 'slotid', 'slotwidth',
+             'slotheight', 'slotvisibility', 'slotformat', 'slotprice', 'creative', 'advertiser', 'usertag']
 
     table = collections.defaultdict(lambda: 0)
 
@@ -115,18 +115,18 @@ def to_libsvm_encode(datapath, sample_type):
                     if len(v) > 0:
                         if k == 'usertag':
                             v = '-'.join(v.split(',')[:3])
-                        elif k == 'slotprice':
-                            price = int(v)
-                            if price > 100:
-                                v = "101+"
-                            elif price > 50:
-                                v = "51-100"
-                            elif price > 10:
-                                v = "11-50"
-                            elif price > 0:
-                                v = "1-10"
-                            else:
-                                v = "0"
+                        # elif k == 'slotprice':
+                        #     price = int(v)
+                        #     if price > 100:
+                        #         v = "101+"
+                        #     elif price > 50:
+                        #         v = "51-100"
+                        #     elif price > 10:
+                        #         v = "11-50"
+                        #     elif price > 0:
+                        #         v = "1-10"
+                        #     else:
+                        #         v = "0"
                         kv = k + '_' + v
                         features.append('{0}'.format(getIndices(kv)))
                         feature_indices.add(kv + '\t' + str(getIndices(kv)))
@@ -147,18 +147,18 @@ def to_libsvm_encode(datapath, sample_type):
                     if len(v) > 0:
                         if k == 'usertag':
                             v = '-'.join(v.split(',')[:3])
-                        elif k == 'slotprice':
-                            price = int(v)
-                            if price > 100:
-                                v = "101+"
-                            elif price > 50:
-                                v = "51-100"
-                            elif price > 10:
-                                v = "11-50"
-                            elif price > 0:
-                                v = "1-10"
-                            else:
-                                v = "0"
+                        # elif k == 'slotprice':
+                        #     price = int(v)
+                        #     if price > 100:
+                        #         v = "101+"
+                        #     elif price > 50:
+                        #         v = "51-100"
+                        #     elif price > 10:
+                        #         v = "11-50"
+                        #     elif price > 0:
+                        #         v = "1-10"
+                        #     else:
+                        #         v = "0"
                         kv = k + '_' + v
                         indices = table.get(kv)
                         if indices is None:
@@ -183,18 +183,18 @@ def to_libsvm_encode(datapath, sample_type):
                     if len(v) > 0:
                         if k == 'usertag':
                             v = '-'.join(v.split(',')[:3])
-                        elif k == 'slotprice':
-                            price = int(v)
-                            if price > 100:
-                                v = "101+"
-                            elif price > 50:
-                                v = "51-100"
-                            elif price > 10:
-                                v = "11-50"
-                            elif price > 0:
-                                v = "1-10"
-                            else:
-                                v = "0"
+                        # elif k == 'slotprice':
+                        #     price = int(v)
+                        #     if price > 100:
+                        #         v = "101+"
+                        #     elif price > 50:
+                        #         v = "51-100"
+                        #     elif price > 10:
+                        #         v = "11-50"
+                        #     elif price > 0:
+                        #         v = "1-10"
+                        #     else:
+                        #         v = "0"
                         kv = k + '_' + v
                         indices = table.get(kv)
                         if indices is None:
@@ -516,7 +516,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='3386/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='2997/', help='1458, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)

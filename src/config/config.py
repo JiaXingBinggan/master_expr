@@ -41,10 +41,10 @@ def init_parser(campaign_id):
     parser.add_argument('--campaign_id', default='2259/', help='1458, 3358, 3386, 3427, 3476, avazu')
     parser.add_argument('--model_name', default='LR', help='LR, FM, FFM, W&D, FNN, DeepFM, IPNN, OPNN, DCN, AFM')
     parser.add_argument('--latent_dims', default=8)
-    parser.add_argument('--epoch', type=int, default=100)
+    parser.add_argument('--epoch', type=int, default=50)
     parser.add_argument('--kfold', type=int, default=5)
     parser.add_argument('--learning_rate', type=float, default=1e-3)
-    parser.add_argument('--weight_decay', type=float, default=1e-5)
+    parser.add_argument('--weight_decay', type=float, default=1e-4)
     parser.add_argument('--early_stop_type', default='loss', help='auc, loss')
     parser.add_argument('--early_stop_iter', type=int, default=5)
     parser.add_argument('--loss_epsilon', type=float, default=1e-6)
@@ -88,7 +88,7 @@ def init_parser(campaign_id):
     if args.ensemble_nums == 3:
         args.ensemble_models = 'LR,FM,FNN'
     elif args.ensemble_nums == 5:
-        args.ensemble_models = 'FM'
+        args.ensemble_models = 'LR,FM,IPNN,DeepFM,DCN,AFM'
     elif args.ensemble_nums == 7:
         args.ensemble_models = 'LR,FM,IPNN,OPNN,DeepFM,W&D,DCN,AFM'
 
