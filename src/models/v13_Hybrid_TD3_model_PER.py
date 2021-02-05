@@ -83,7 +83,7 @@ class Memory(object):
             sample_indexs = torch.Tensor(
                 np.random.choice(self.memory_counter, batch_size, p=P, replace=False)).long().to(self.device)
 
-        self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
+        # self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
         # print(self.beta)
         batch = self.memory[sample_indexs]
         choose_priorities = priorities[sample_indexs]
@@ -380,9 +380,9 @@ class Hybrid_TD3_Model():
 
         ensemble_c_actions = torch.softmax(torch.tanh(action_values), dim=-1)
 
-        # ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=action_values,
-        #                                                         temprature=self.temprature_eva), dim=-1) + 1
-        ensemble_d_actions = torch.argmax(onehot_from_logits(action_values), dim=-1) + 1
+        ensemble_d_actions = torch.argmax(gumbel_softmax_sample(logits=action_values,
+                                                                temprature=self.temprature_eva), dim=-1) + 1
+        # ensemble_d_actions = torch.argmax(onehot_from_logits(action_values), dim=-1) + 1
 
         return ensemble_d_actions.view(-1, 1), action_values, ensemble_c_actions
 
@@ -540,7 +540,7 @@ class Hybrid_TD3_Model():
             self.soft_update(self.Hybrid_Critic, self.Hybrid_Critic_)
             self.soft_update(self.Hybrid_Actor, self.Hybrid_Actor_)
         
-        self.temprature = max(self.temprature_min, self.temprature - self.anneal_rate)
+        # self.temprature = max(self.temprature_min, self.temprature - self.anneal_rate)
 
         return critic_loss_r
 

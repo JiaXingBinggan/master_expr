@@ -125,7 +125,7 @@ def weight_init(layers):
         elif isinstance(layer, nn.Linear):
             fan_in = layer.weight.data.size()[0]
             lim = 1. / np.sqrt(fan_in)
-            layer.weight.data.uniform_(-lim, lim)
+            layer.weight.data.uniform_(-0.003, 0.003)
             layer.bias.data.fill_(0)
 
 class Critic(nn.Module):
@@ -146,7 +146,7 @@ class Critic(nn.Module):
             self.layers_1.append(nn.Linear(deep_input_dims_1, neuron_num))
             # self.layers_1.append(nn.BatchNorm1d(neuron_num))
             self.layers_1.append(nn.ReLU())
-            self.layers_1.append(nn.Dropout(p=0.2))
+            # self.layers_1.append(nn.Dropout(p=0.2))
             deep_input_dims_1 = neuron_num
 
         # weight_init_critic(self.layers_1)
@@ -159,7 +159,7 @@ class Critic(nn.Module):
             self.layers_2.append(nn.Linear(deep_input_dims_2, neuron_num))
             # self.layers_2.append(nn.BatchNorm1d(neuron_num))
             self.layers_2.append(nn.ReLU())
-            self.layers_2.append(nn.Dropout(p=0.2))
+            # self.layers_2.append(nn.Dropout(p=0.2))
             deep_input_dims_2 = neuron_num
 
         # weight_init_critic(self.layers_2)
@@ -267,12 +267,12 @@ class TD3_Model():
 
         # 优化器
         self.optimizer_a = torch.optim.Adam(self.Actor.parameters(), lr=self.lr_A)
-        self.optimizer_c = torch.optim.Adam(self.Critic.parameters(), lr=self.lr_C)
+        self.optimizer_c = torch.optim.Adam(self.Critic.parameters(), lr=self.lr_C, weight_decay=1e-5)
 
         self.loss_func = nn.MSELoss(reduction='mean')
 
         self.learn_iter = 0
-        self.policy_freq = 3
+        self.policy_freq = 5
 
     def store_transition(self, transitions):  # 所有的值都应该弄成float
         if torch.max(self.memory.prioritys_) == 0.:
@@ -288,13 +288,12 @@ class TD3_Model():
     def choose_action(self, state):
         self.Actor.eval()
         with torch.no_grad():
-            action_means = torch.clamp(self.Actor.act(state.to(self.device)), -1.0, 1.0)
-
-            res_actions = action_means + torch.randn_like(action_means) * 0.5
+            action_means = self.Actor.act(state.to(self.device))
+            res_actions = torch.clamp(action_means + torch.randn_like(action_means) * 0.1, -1.0, 1.0)
 
         self.Actor.train()
 
-        return res_actions,  torch.softmax(action_means, dim=-1)
+        return res_actions,  torch.softmax(res_actions, dim=-1)
 
     def choose_best_action(self, state):
         self.Actor.eval()
@@ -328,21 +327,19 @@ class TD3_Model():
 
         b_s = batch_memory[:, :self.input_dims]
         b_a = batch_memory[:, self.input_dims: self.input_dims + self.action_nums]
-        b_r = torch.unsqueeze(batch_memory[:, -1], 1)
-        b_done = torch.unsqueeze(batch_memory[:, -2], 1)
-        b_s_ = batch_memory[:, -self.input_dims - 2: -2] # embedding_layer.forward(batch_memory_states)
+        b_r = batch_memory[:, self.input_dims + self.action_nums: self.input_dims + self.action_nums + 1]
+        b_s_ = batch_memory[:, -self.input_dims:] # embedding_layer.forward(batch_memory_states)
 
         with torch.no_grad():
             actions_means_next = self.Actor_.evaluate(b_s_)
             actions_means_next = torch.clamp(actions_means_next +
-                                             torch.clamp(torch.randn_like(actions_means_next) * 1.0, -2.0, 2.0),
+                                             torch.clamp(torch.randn_like(actions_means_next) * 0.2, -0.5, 0.5),
                                              -1.0, 1.0)
 
             q1_target, q2_target = \
                 self.Critic_.evaluate(b_s_, actions_means_next)
 
-            q_target = torch.min(q1_target, q2_target)
-            q_target = b_r + self.gamma * torch.mul(q_target, 1 - b_done)
+            q_target = b_r + self.gamma * torch.min(q1_target, q2_target)
 
         q1, q2 = self.Critic.evaluate(b_s, b_a)
 
@@ -354,7 +351,7 @@ class TD3_Model():
 
         self.optimizer_c.zero_grad()
         critic_loss.backward()
-        # nn.utils.clip_grad_norm_(self.Critic.parameters(), max_norm=10, norm_type=2)
+        nn.utils.clip_grad_norm_(self.Critic.parameters(), max_norm=40, norm_type=2)
         self.optimizer_c.step()
 
         critic_loss_r = critic_loss.item()
@@ -362,14 +359,14 @@ class TD3_Model():
 
         if self.learn_iter % self.policy_freq == 0:
             actions_means = self.Actor.evaluate(b_s)
-            reg = 0.5 * (torch.pow(actions_means, 2).mean())
+            reg = torch.pow(actions_means, 2).mean()
 
             critic_value = self.Critic.evaluate_q_1(b_s, actions_means)
-            c_a_loss = -critic_value.mean() + reg * 1e-3
+            c_a_loss = -critic_value.mean() + reg
 
             self.optimizer_a.zero_grad()
             c_a_loss.backward()
-            # nn.utils.clip_grad_norm_(self.Actor.parameters(), max_norm=10, norm_type=2)
+            nn.utils.clip_grad_norm_(self.Actor.parameters(), max_norm=40, norm_type=2)
             self.optimizer_a.step()
 
             self.soft_update(self.Critic, self.Critic_)

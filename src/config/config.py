@@ -71,14 +71,14 @@ def init_parser(campaign_id):
     parser.add_argument('--tau', type=float, default=0.0005)
     parser.add_argument('--rl_weight_decay', type=float, default=1e-5)
     parser.add_argument('--rl_batch_size', type=int, default=32)
-    parser.add_argument('--rl_iter_size', type=int, default=5)
+    parser.add_argument('--rl_iter_size', type=int, default=10)
     parser.add_argument('--rl_train_iters', type=int, default=128)
-    parser.add_argument('--rl_gen_batch_size', type=int, default=4096 * 128)
-    parser.add_argument('--memory_size', type=int, default=100000) # 感觉需要再调调,100000
+    parser.add_argument('--rl_gen_batch_size', type=int, default=4096 * 32)
+    parser.add_argument('--memory_size', type=int, default=500000) # 感觉需要再调调,100000
 
     parser.add_argument('--reward_epsilon', type=float, default=2e-3)
-    parser.add_argument('--run_steps', type=float, default=1e5)
-    parser.add_argument('--stop_steps', type=float, default=1e5)
+    parser.add_argument('--run_steps', type=float, default=5e5)
+    parser.add_argument('--stop_steps', type=float, default=5e5)
     parser.add_argument('--record_times', type=int, default=100)
     parser.add_argument('--rl_early_stop_iter', type=int, default=10)
 
@@ -88,7 +88,7 @@ def init_parser(campaign_id):
     if args.ensemble_nums == 3:
         args.ensemble_models = 'LR,FM,FNN'
     elif args.ensemble_nums == 5:
-        args.ensemble_models = 'LR,FM,IPNN,DeepFM,DCN,AFM'
+        args.ensemble_models = 'LR,FM,IPNN,DeepFM,DCN'
     elif args.ensemble_nums == 7:
         args.ensemble_models = 'LR,FM,IPNN,OPNN,DeepFM,W&D,DCN,AFM'
 

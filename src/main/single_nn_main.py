@@ -208,7 +208,6 @@ def get_dataset(args):
 if __name__ == '__main__':
     campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-    args.neuron_nums = [200, 300, 100]
     args.model_name = 'S_NN_CTR'
     train_data, test_data = get_dataset(args)
 
@@ -235,82 +234,87 @@ if __name__ == '__main__':
         os.mkdir(submission_path)
 
     device = torch.device(args.device)  # 指定运行设备
+    neuron_nums = [[100], [100, 100], [200, 300, 100]]
 
-    logger.info(campaign_id)
-    logger.info('NN model ' + args.model_name + ' has been training')
-    logger.info(args)
+    for neuron_num in neuron_nums:
+        args.neuron_nums = neuron_num
 
-    test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
-    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
+        logger.info(campaign_id)
+        logger.info('RL model ' + args.rl_model_name + ' has been training, '
+                    + 'neuron nums ' + ','.join(map(str, args.neuron_nums)))
+        logger.info(args)
 
-    test_predict_arrs = []
-    
-    nn_model = get_model(args, device)
-    loss = nn.BCELoss()
+        test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
+        test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
 
-    optimizer = torch.optim.Adam(params=nn_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+        test_predict_arrs = []
 
-    train_losses = []
+        nn_model = get_model(args, device)
+        loss = nn.BCELoss()
 
-    start_time = datetime.datetime.now()
+        optimizer = torch.optim.Adam(params=nn_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
 
-    torch.cuda.empty_cache()  # 清理无用的cuda中间变量缓存
+        train_losses = []
 
-    train_start_time = datetime.datetime.now()
+        start_time = datetime.datetime.now()
 
-    train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
-    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, num_workers=8)
-    record_list = []
-
-    for epoch in range(args.epoch):
         torch.cuda.empty_cache()  # 清理无用的cuda中间变量缓存
 
-        train_average_loss = train(nn_model, loss, train_data_loader, optimizer, device)
+        train_start_time = datetime.datetime.now()
 
-        auc, predicts, valid_loss, final_weights = \
-            test(nn_model, loss, test_data_loader, device)
-        record_list = [auc, predicts, final_weights]
+        train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
+        train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, num_workers=8)
+        record_list = []
+
+        for epoch in range(args.epoch):
+            torch.cuda.empty_cache()  # 清理无用的cuda中间变量缓存
+
+            train_average_loss = train(nn_model, loss, train_data_loader, optimizer, device)
+
+            auc, predicts, valid_loss, final_weights = \
+                test(nn_model, loss, test_data_loader, device)
+            record_list = [auc, predicts, final_weights]
+
+            train_end_time = datetime.datetime.now()
+            logger.info(
+                'Model {}, epoch {}, train loss {}, val auc {}, '
+                'val loss {} [{}s]'.format(args.model_name, epoch, train_average_loss, auc, valid_loss,
+                                           (train_end_time - train_start_time).seconds))
+            train_losses.append(train_average_loss)
+
+        test_auc, test_predicts, test_prob_weights = \
+            record_list[0], record_list[1], record_list[2].cpu().numpy()
 
         train_end_time = datetime.datetime.now()
-        logger.info(
-            'Model {}, epoch {}, train loss {}, val auc {}, '
-            'val loss {} [{}s]'.format(args.model_name, epoch, train_average_loss, auc, valid_loss,
-                                       (train_end_time - train_start_time).seconds))
-        train_losses.append(train_average_loss)
 
-    test_auc, test_predicts, test_prob_weights = \
-        record_list[0], record_list[1], record_list[2].cpu().numpy()
+        logger.info('Model {}, test auc {}, [{}s]'.format(args.model_name,
+                                                            test_auc, (datetime.datetime.now() - start_time).seconds))
+        test_predict_arrs.append(test_predicts)
 
-    train_end_time = datetime.datetime.now()
-
-    logger.info('Model {}, test auc {}, [{}s]'.format(args.model_name,
-                                                        test_auc, (datetime.datetime.now() - start_time).seconds))
-    test_predict_arrs.append(test_predicts)
-
-    prob_weights_df = pd.DataFrame(data=test_prob_weights)
-    prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
-                           + args.sample_type + '.csv', header=None)
-
-    train_critics_df = pd.DataFrame(data=train_losses)
-    train_critics_df.to_csv(submission_path + 'train_losses_' + str(args.ensemble_nums) + '_'
-                            + args.sample_type + '.csv', header=None)
-
-    final_subs = np.mean(test_predict_arrs, axis=0)
-    final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
-
-    rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
-    rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
-                                + args.sample_type + '.csv')
-
-    rl_ensemble_aucs = [[final_auc]]
-    rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
-    rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
+        prob_weights_df = pd.DataFrame(data=test_prob_weights)
+        prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
                                + args.sample_type + '.csv', header=None)
 
-    if args.dataset_name == 'ipinyou/':
-        logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,
-                                                                                  args.campaign_id,
-                                                                                  args.model_name, final_auc))
-    else:
-        logger.info(
-            'Dataset {}, models {}, ensemble auc {}\n'.format(args.dataset_name, args.model_name, final_auc))
+        train_critics_df = pd.DataFrame(data=train_losses)
+        train_critics_df.to_csv(submission_path + 'train_losses_' + str(args.ensemble_nums) + '_'
+                                + args.sample_type + '.csv', header=None)
+
+        final_subs = np.mean(test_predict_arrs, axis=0)
+        final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
+
+        rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
+        rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
+                                    + args.sample_type + '.csv')
+
+        rl_ensemble_aucs = [[final_auc]]
+        rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
+        rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
+                                   + args.sample_type + '.csv', header=None)
+
+        if args.dataset_name == 'ipinyou/':
+            logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,
+                                                                                      args.campaign_id,
+                                                                                      args.model_name, final_auc))
+        else:
+            logger.info(
+                'Dataset {}, models {}, ensemble auc {}\n'.format(args.dataset_name, args.model_name, final_auc))

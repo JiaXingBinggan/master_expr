@@ -296,193 +296,202 @@ if __name__ == '__main__':
 
     device = torch.device(args.device)  # 指定运行设备
 
-    logger.info(campaign_id)
-    logger.info('RL model ' + args.rl_model_name + ' has been training')
-    logger.info(args)
+    neuron_nums = [[100], [100, 100], [200, 300, 100]]
+    seeds = [1, 10, 100, 1000, 10000]
 
-    test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
-    test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
+    for neuron_num in neuron_nums:
+        for seed in seeds:
+            args.neuron_nums = neuron_num
+            args.seed = seed
 
-    test_predict_arrs = []
+            logger.info(campaign_id)
+            logger.info('RL model ' + args.rl_model_name + ' has been training, seed '
+                        + str(args.seed) + ' neuron nums ' + ','.join(map(str, args.neuron_nums)))
+            logger.info(args)
 
-    model_dict_len = args.ensemble_nums
+            test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
+            test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
 
-    gap = args.stop_steps // args.record_times
-    # gap = 1000
+            test_predict_arrs = []
 
-    data_len = len(train_data)
+            model_dict_len = args.ensemble_nums
 
-    rl_model = get_model(args, device)
+            gap = args.stop_steps // args.record_times
+            # gap = 1000
 
-    loss = nn.BCELoss()
+            data_len = len(train_data)
 
-    val_aucs = []
+            rl_model = get_model(args, device)
 
-    val_rewards_records = []
-    timesteps = []
-    train_critics = []
-    global_steps = 0
+            loss = nn.BCELoss()
 
-    early_aucs, early_rewards = [], []
+            val_aucs = []
 
-    random = True
-    start_time = datetime.datetime.now()
+            val_rewards_records = []
+            timesteps = []
+            train_critics = []
+            global_steps = 0
 
-    torch.cuda.empty_cache()  # 清理无用的cuda中间变量缓存
+            early_aucs, early_rewards = [], []
 
-    train_start_time = datetime.datetime.now()
+            random = True
+            start_time = datetime.datetime.now()
 
-    is_sample_action = True # 是否在训练开始时完全使用随机动作
-    is_val = False
+            torch.cuda.empty_cache()  # 清理无用的cuda中间变量缓存
 
-    tmp_train_ctritics = 0
+            train_start_time = datetime.datetime.now()
 
-    record_param_steps = 0
-    is_early_stop = False
-    early_stop_index = 0
-    intime_steps = 0
+            is_sample_action = True # 是否在训练开始时完全使用随机动作
+            is_val = False
 
-    record_list = []
-    # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
-    # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
-    train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
-    # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
-    # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_iter_size, num_workers=8, shuffle=1)
-    while intime_steps <= args.stop_steps:
-        batchs = train_batch_gen.__next__()
-        labels = torch.Tensor(batchs[:, 0: 1]).long().to(device)
-        current_pretrain_y_preds = torch.Tensor(batchs[:, 1:]).float().to(device)
-    # for i, (pretrain_y_preds, labels) in enumerate(train_data_loader):
-    #     intime_steps = i * args.rl_iter_size
-    #     current_pretrain_y_preds, labels = pretrain_y_preds.float().to(device), labels.long().unsqueeze(1).to(device)
+            tmp_train_ctritics = 0
 
-        s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
+            record_param_steps = 0
+            is_early_stop = False
+            early_stop_index = 0
+            intime_steps = 0
 
-        c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions = rl_model.choose_action(
-            s_t)
+            record_list = []
+            # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
+            # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
+            train_batch_gen = get_list_data(train_data, args.rl_iter_size, True)# 要不要早停
+            # train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
+            # train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.rl_iter_size, num_workers=8, shuffle=1)
+            while intime_steps <= args.stop_steps:
+                batchs = train_batch_gen.__next__()
+                labels = torch.Tensor(batchs[:, 0: 1]).long().to(device)
+                current_pretrain_y_preds = torch.Tensor(batchs[:, 1:]).float().to(device)
+            # for i, (pretrain_y_preds, labels) in enumerate(train_data_loader):
+            #     intime_steps = i * args.rl_iter_size
+            #     current_pretrain_y_preds, labels = pretrain_y_preds.float().to(device), labels.long().unsqueeze(1).to(device)
 
-        y_preds, rewards, return_c_actions, return_ctrs = \
-            generate_preds(args.ensemble_nums, current_pretrain_y_preds, ensemble_d_actions, ensemble_c_actions, c_actions, labels, device,
-                           mode='train')
+                s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
-        s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
+                c_actions, ensemble_c_actions, d_q_values, ensemble_d_actions = rl_model.choose_action(
+                    s_t)
 
-        transitions = torch.cat(
-            [s_t, return_c_actions, d_q_values, s_t_, rewards],
-            dim=1)
+                y_preds, rewards, return_c_actions, return_ctrs = \
+                    generate_preds(args.ensemble_nums, current_pretrain_y_preds, ensemble_d_actions, ensemble_c_actions, c_actions, labels, device,
+                                   mode='train')
 
-        rl_model.store_transition(transitions)
+                s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
-        if intime_steps % gap == 0:
-            test_auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
+                transitions = torch.cat(
+                    [s_t, return_c_actions, d_q_values, s_t_, rewards],
+                    dim=1)
 
-            record_list = [test_auc, predicts, actions, prob_weights]
+                rl_model.store_transition(transitions)
 
-            logger.info('Model {}, timesteps {}, test auc {}, test rewards {}, [{}s]'.format(
-                args.rl_model_name, intime_steps, test_auc, test_rewards, (datetime.datetime.now() - train_start_time).seconds))
-            val_rewards_records.append(test_rewards)
-            timesteps.append(intime_steps)
-            val_aucs.append(test_auc)
+                if intime_steps % gap == 0:
+                    test_auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
 
-            train_critics.append(tmp_train_ctritics)
+                    record_list = [test_auc, predicts, actions, prob_weights]
 
-            # rl_model.temprature = max(rl_model.temprature_min,
-            #                            rl_model.temprature - gap *
-            #                            (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
-            # rl_model.memory.beta = min(rl_model.memory.beta_max,
-            #                           rl_model.memory.beta + gap *
-            #                            (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
+                    logger.info('Model {}, timesteps {}, test auc {}, test rewards {}, [{}s]'.format(
+                        args.rl_model_name, intime_steps, test_auc, test_rewards, (datetime.datetime.now() - train_start_time).seconds))
+                    val_rewards_records.append(test_rewards)
+                    timesteps.append(intime_steps)
+                    val_aucs.append(test_auc)
 
-            early_aucs.append([record_param_steps, test_auc])
-            early_rewards.append([record_param_steps, test_rewards])
-            # torch.save(rl_model.Hybrid_Actor.state_dict(),
-            #            args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-            #                np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
+                    train_critics.append(tmp_train_ctritics)
 
-            # record_param_steps += 1
-            # if args.run_steps <= intime_steps <= args.stop_steps:
-            #     if eva_stopping(early_rewards, args):
-            #         max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
-            #         early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
-            #         is_early_stop = True
-            #         break
+                    rl_model.temprature = max(rl_model.temprature_min,
+                                               rl_model.temprature - gap *
+                                               (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
+                    rl_model.memory.beta = min(rl_model.memory.beta_max,
+                                              rl_model.memory.beta + gap *
+                                               (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
-            torch.cuda.empty_cache()
+                    early_aucs.append([record_param_steps, test_auc])
+                    early_rewards.append([record_param_steps, test_rewards])
+                    # torch.save(rl_model.Hybrid_Actor.state_dict(),
+                    #            args.save_param_dir + args.campaign_id + args.rl_model_name + str(
+                    #                np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
 
-        # if intime_steps >= args.rl_batch_size and intime_steps % 10 == 0:
-        if intime_steps >= args.rl_batch_size:
-            critic_loss = rl_model.learn()
-            tmp_train_ctritics = critic_loss
+                    # record_param_steps += 1
+                    # if args.run_steps <= intime_steps <= args.stop_steps:
+                    #     if eva_stopping(early_rewards, args):
+                    #         max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
+                    #         early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
+                    #         is_early_stop = True
+                    #         break
 
-        intime_steps += batchs.shape[0]
+                    torch.cuda.empty_cache()
 
-    logger.info('Final gumbel Softmax temprature is {}'.format(rl_model.temprature))
+                # if intime_steps >= args.rl_batch_size and intime_steps % 10 == 0:
+                if intime_steps >= args.rl_batch_size:
+                    critic_loss = rl_model.learn()
+                    tmp_train_ctritics = critic_loss
 
-    train_end_time = datetime.datetime.now()
+                intime_steps += batchs.shape[0]
 
-    '''
-    要不要早停
-    '''
-    # if is_early_stop:
-    #     test_rl_model = get_model(args, device)
-    #     load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-    #                           early_stop_index) + '.pth'
-    #
-    #     test_rl_model.Hybrid_Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
-    # else:
-    #     test_rl_model = rl_model
-    #
-    # test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
-    #                                                                       device)
+            logger.info('Final gumbel Softmax temprature is {}'.format(rl_model.temprature))
 
-    test_auc, test_predicts, test_actions, test_prob_weights = record_list[0], record_list[1], record_list[2], record_list[3]
+            train_end_time = datetime.datetime.now()
 
-    # for i in range(args.rl_early_stop_iter):
-    #     os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
+            '''
+            要不要早停
+            '''
+            # if is_early_stop:
+            #     test_rl_model = get_model(args, device)
+            #     load_path = args.save_param_dir + args.campaign_id + args.rl_model_name + str(
+            #                           early_stop_index) + '.pth'
+            #
+            #     test_rl_model.Hybrid_Actor.load_state_dict(torch.load(load_path, map_location=device))  # 加载最优参数
+            # else:
+            #     test_rl_model = rl_model
+            #
+            # test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
+            #                                                                       device)
 
-    logger.info('Model {}, test auc {}, [{}s]'.format(args.rl_model_name,
-                                                        test_auc, (datetime.datetime.now() - start_time).seconds))
-    test_predict_arrs.append(test_predicts)
+            test_auc, test_predicts, test_actions, test_prob_weights = record_list[0], record_list[1], record_list[2], record_list[3]
 
-    neuron_nums_str = '_'.join(map(str, args.neuron_nums))
+            # for i in range(args.rl_early_stop_iter):
+            #     os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
 
-    prob_weights_df = pd.DataFrame(data=test_prob_weights.cpu().numpy())
-    prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
-                           + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
+            logger.info('Model {}, test auc {}, [{}s]'.format(args.rl_model_name,
+                                                                test_auc, (datetime.datetime.now() - start_time).seconds))
+            test_predict_arrs.append(test_predicts)
 
-    actions_df = pd.DataFrame(data=test_actions.cpu().numpy())
-    actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
-                      + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
+            neuron_nums_str = '_'.join(map(str, args.neuron_nums))
 
-    valid_aucs_df = pd.DataFrame(data=val_aucs)
-    valid_aucs_df.to_csv(submission_path + 'val_aucs_' + str(args.ensemble_nums) + '_'
-                         + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
+            prob_weights_df = pd.DataFrame(data=test_prob_weights.cpu().numpy())
+            prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
+                                   + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
-    val_rewards_records = {'rewards': val_rewards_records, 'timesteps': timesteps}
-    val_rewards_records_df = pd.DataFrame(data=val_rewards_records)
-    val_rewards_records_df.to_csv(submission_path + 'val_reward_records_' + str(args.ensemble_nums) + '_'
-                                  + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
+            actions_df = pd.DataFrame(data=test_actions.cpu().numpy())
+            actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
+                              + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
-    train_critics_df = pd.DataFrame(data=train_critics)
-    train_critics_df.to_csv(submission_path + 'train_critics_' + str(args.ensemble_nums) + '_'
-                            + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
+            valid_aucs_df = pd.DataFrame(data=val_aucs)
+            valid_aucs_df.to_csv(submission_path + 'val_aucs_' + str(args.ensemble_nums) + '_'
+                                 + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
-    final_subs = np.mean(test_predict_arrs, axis=0)
-    final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
+            val_rewards_records = {'rewards': val_rewards_records, 'timesteps': timesteps}
+            val_rewards_records_df = pd.DataFrame(data=val_rewards_records)
+            val_rewards_records_df.to_csv(submission_path + 'val_reward_records_' + str(args.ensemble_nums) + '_'
+                                          + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
-    rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
-    rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
-                                + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv')
+            train_critics_df = pd.DataFrame(data=train_critics)
+            train_critics_df.to_csv(submission_path + 'train_critics_' + str(args.ensemble_nums) + '_'
+                                    + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
-    rl_ensemble_aucs = [[final_auc]]
-    rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
-    rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
-                               + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
+            final_subs = np.mean(test_predict_arrs, axis=0)
+            final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
 
-    if args.dataset_name == 'ipinyou/':
-        logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,
-                                                                                  args.campaign_id,
-                                                                                  args.rl_model_name, final_auc))
-    else:
-        logger.info(
-            'Dataset {}, models {}, ensemble auc {}\n'.format(args.dataset_name, args.rl_model_name, final_auc))
+            rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
+            rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
+                                        + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv')
+
+            rl_ensemble_aucs = [[final_auc]]
+            rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
+            rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
+                                       + args.sample_type + '_' + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
+
+            if args.dataset_name == 'ipinyou/':
+                logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,
+                                                                                          args.campaign_id,
+                                                                                          args.rl_model_name, final_auc))
+            else:
+                logger.info(
+                    'Dataset {}, models {}, ensemble auc {}\n'.format(args.dataset_name, args.rl_model_name, final_auc))
