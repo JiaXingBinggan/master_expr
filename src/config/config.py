@@ -59,7 +59,7 @@ def init_parser(campaign_id):
     parser.add_argument('--sample_type', default='all', help='all, down, rand')
 
     # for ensemble
-    parser.add_argument('--ensemble_nums', type=int, default=5, help='3,5,7')
+    parser.add_argument('--ensemble_nums', type=int, default=3, help='3,5,7')
     parser.add_argument('--ensemble_models', default='LR,FM,FNN,IPNN,DCN')
 
     # for RL training
@@ -86,7 +86,7 @@ def init_parser(campaign_id):
     args.campaign_id = campaign_id
 
     if args.ensemble_nums == 3:
-        args.ensemble_models = 'LR,FM,FNN'
+        args.ensemble_models = 'IPNN,DeepFM,DCN'
     elif args.ensemble_nums == 5:
         args.ensemble_models = 'LR,FM,IPNN,DeepFM,DCN'
     elif args.ensemble_nums == 7:
