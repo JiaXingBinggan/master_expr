@@ -174,7 +174,7 @@ def get_dataset(args):
     return train_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     args.rl_model_name = 'S_RL_CTR'
     if campaign_id == '2259/' and args.ensemble_nums == 3:
@@ -300,6 +300,9 @@ if __name__ == '__main__':
                     val_aucs.append(auc)
 
                     train_critics.append(tmp_train_ctritics)
+                    rl_model.memory.beta = min(rl_model.memory.beta_max,
+                                              rl_model.memory.beta + gap *
+                                               (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
                     early_aucs.append([record_param_steps, auc])
                     early_rewards.append([record_param_steps, test_rewards])
@@ -332,34 +335,36 @@ if __name__ == '__main__':
                                                                 test_auc, (datetime.datetime.now() - start_time).seconds))
             test_predict_arrs.append(test_predicts)
 
+            neuron_nums_str = '_'.join(map(str, args.neuron_nums))
+
             prob_weights_df = pd.DataFrame(data=test_prob_weights)
             prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
-                                   + args.sample_type + '.csv', header=None)
+                                   + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
 
             valid_aucs_df = pd.DataFrame(data=val_aucs)
             valid_aucs_df.to_csv(submission_path + 'val_aucs_' + str(args.ensemble_nums) + '_'
-                                 + args.sample_type + '.csv', header=None)
+                                 + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
 
             val_rewards_records = {'rewards': val_rewards_records, 'timesteps': timesteps}
             val_rewards_records_df = pd.DataFrame(data=val_rewards_records)
             val_rewards_records_df.to_csv(submission_path + 'val_reward_records_' + str(args.ensemble_nums) + '_'
-                                          + args.sample_type + '.csv', index=None)
+                                          + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
 
             train_critics_df = pd.DataFrame(data=train_critics)
             train_critics_df.to_csv(submission_path + 'train_critics_' + str(args.ensemble_nums) + '_'
-                                    + args.sample_type + '.csv', header=None)
+                                    + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
 
             final_subs = np.mean(test_predict_arrs, axis=0)
             final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
 
             rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
             rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
-                                        + args.sample_type + '.csv')
+                                        + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv')
 
             rl_ensemble_aucs = [[final_auc]]
             rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
             rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
-                                       + args.sample_type + '.csv', header=None)
+                                       + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
 
             if args.dataset_name == 'ipinyou/':
                 logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,

@@ -81,7 +81,7 @@ class Memory(object):
             sample_indexs = torch.Tensor(
                 np.random.choice(self.memory_counter, batch_size, p=P, replace=False)).long().to(self.device)
 
-        self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
+        # self.beta = torch.min(torch.FloatTensor([1., self.beta + self.beta_increment_per_sampling])).item()
         # print(self.beta)
         batch = self.memory[sample_indexs]
         choose_priorities = priorities[sample_indexs]
@@ -267,7 +267,7 @@ class TD3_Model():
 
         # 优化器
         self.optimizer_a = torch.optim.Adam(self.Actor.parameters(), lr=self.lr_A)
-        self.optimizer_c = torch.optim.Adam(self.Critic.parameters(), lr=self.lr_C, weight_decay=1e-5)
+        self.optimizer_c = torch.optim.Adam(self.Critic.parameters(), lr=self.lr_C)
 
         self.loss_func = nn.MSELoss(reduction='mean')
 

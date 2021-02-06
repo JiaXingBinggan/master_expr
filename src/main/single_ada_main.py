@@ -7,10 +7,9 @@ import argparse
 import random
 from sklearn.metrics import roc_auc_score
 import src.models.p_model as Model
-import src.models.Single_TD3_model_PER as td3_model
-import src.models.creat_data as Data
-from src.models.Feature_embedding import Feature_Embedding
 from torch.autograd import Variable
+from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
 
 import torch
 import torch.nn as nn
@@ -49,18 +48,9 @@ class Weight_Training(nn.Module):
         self.mlp = nn.Sequential(*self.layers)
 
     def forward(self, input):
-        weights = self.mlp(input)
+        weights = self.mlp(self.bn_input(input))
 
-        out = torch.mul(weights, input).mean(dim=-1)
-
-        return out
-
-    def evaluate(self, input):
-        weights = self.mlp(input)
-
-        out = torch.mul(weights, input).mean(dim=-1)
-
-        return out, weights
+        return weights
 
 def gumbel_softmax_sample(logits, temprature=1.0, hard=False, eps=1e-20, uniform_seed=1.0):
     U = Variable(torch.FloatTensor(*logits.shape).uniform_().cuda(), requires_grad=False)
@@ -112,10 +102,11 @@ def train(nn_model, loss, data_loader, optimizer, device):
     nn_model.train()
 
     for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
-        current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(
+        current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device) * 1e3, torch.unsqueeze(labels, 1).to(
             device)
 
-        y = nn_model(current_pretrain_y_preds).view(-1, 1)
+        weights = nn_model(current_pretrain_y_preds)
+        y = torch.sum(torch.mul(current_pretrain_y_preds / 1e3, weights), dim=-1).view(-1, 1)
 
         train_loss = loss(y, labels.float())
         nn_model.zero_grad()
@@ -137,12 +128,14 @@ def test(nn_model, loss, data_loader, device):
 
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
-            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(
+            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device) * 1e3, torch.unsqueeze(labels, 1).to(
                 device)
 
-            y, weights = nn_model.evaluate(current_pretrain_y_preds)
+            weights = nn_model(current_pretrain_y_preds)
 
-            test_loss = loss(y.view(-1, 1), labels.float())
+            y = torch.sum(torch.mul(current_pretrain_y_preds / 1e3, weights), dim=-1).view(-1, 1)
+
+            test_loss = loss(y, labels.float())
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
             intervals += 1
@@ -205,7 +198,7 @@ def get_dataset(args):
     datapath = args.data_path + args.dataset_name + args.campaign_id
 
     columns = ['label'] + args.ensemble_models.split(',')
-    train_data = pd.read_csv(datapath + 'val.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
+    train_data = pd.read_csv(datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
     test_data = pd.read_csv(datapath + 'test.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
 
     return train_data, test_data
@@ -242,89 +235,12 @@ if __name__ == '__main__':
         os.mkdir(submission_path)
 
     device = torch.device(args.device)  # 指定运行设备
-    neuron_nums = [[100], [100, 100], [200, 300, 100]]
 
-    for neuron_num in neuron_nums:
-        args.neuron_nums = neuron_num
+    bdt = AdaBoostClassifier(DecisionTreeClassifier(max_depth=2, min_samples_split=20, min_samples_leaf=5),
+                             algorithm="SAMME",
+                             n_estimators=50, learning_rate=0.8)
+    bdt.fit(train_data[:, 1:], train_data[:, 0])
 
-        logger.info(campaign_id)
-        logger.info('RL model ' + args.rl_model_name + ' has been training, '
-                    + 'neuron nums ' + ','.join(map(str, args.neuron_nums)))
-        logger.info(args)
+    test_res = bdt.predict(test_data[:, 1:])
+    print(roc_auc_score(test_data[:, 0], test_res))
 
-        test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
-        test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
-
-        test_predict_arrs = []
-
-        nn_model = get_model(args, device)
-        loss = nn.BCELoss()
-
-        optimizer = torch.optim.Adam(params=nn_model.parameters(), lr=args.learning_rate, weight_decay=1e-3)
-
-        train_losses = []
-
-        start_time = datetime.datetime.now()
-
-        torch.cuda.empty_cache()  # 清理无用的cuda中间变量缓存
-
-        train_start_time = datetime.datetime.now()
-
-        train_dataset = Data.libsvm_dataset(train_data[:, 1:], train_data[:, 0])
-        train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, num_workers=8)
-        record_list = []
-
-        for epoch in range(args.epoch):
-            torch.cuda.empty_cache()  # 清理无用的cuda中间变量缓存
-
-            train_average_loss = train(nn_model, loss, train_data_loader, optimizer, device)
-
-            auc, predicts, valid_loss, final_weights = \
-                test(nn_model, loss, test_data_loader, device)
-            record_list = [auc, predicts, final_weights]
-
-            train_end_time = datetime.datetime.now()
-            logger.info(
-                'Model {}, epoch {}, train loss {}, val auc {}, '
-                'val loss {} [{}s]'.format(args.model_name, epoch, train_average_loss, auc, valid_loss,
-                                           (train_end_time - train_start_time).seconds))
-            train_losses.append(train_average_loss)
-
-        test_auc, test_predicts, test_prob_weights = \
-            record_list[0], record_list[1], record_list[2].cpu().numpy()
-
-        train_end_time = datetime.datetime.now()
-
-        logger.info('Model {}, test auc {}, [{}s]'.format(args.model_name,
-                                                            test_auc, (datetime.datetime.now() - start_time).seconds))
-        test_predict_arrs.append(test_predicts)
-
-        neuron_nums_str = '_'.join(map(str, args.neuron_nums))
-
-        prob_weights_df = pd.DataFrame(data=test_prob_weights)
-        prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
-                               + args.sample_type + neuron_nums_str + '.csv', header=None)
-
-        train_critics_df = pd.DataFrame(data=train_losses)
-        train_critics_df.to_csv(submission_path + 'train_losses_' + str(args.ensemble_nums) + '_'
-                                + args.sample_type + neuron_nums_str + '.csv', header=None)
-
-        final_subs = np.mean(test_predict_arrs, axis=0)
-        final_auc = roc_auc_score(test_data[:, 0: 1].tolist(), final_subs.tolist())
-
-        rl_ensemble_preds_df = pd.DataFrame(data=final_subs)
-        rl_ensemble_preds_df.to_csv(submission_path + 'submission_' + str(args.ensemble_nums) + '_'
-                                    + args.sample_type + neuron_nums_str + '.csv')
-
-        rl_ensemble_aucs = [[final_auc]]
-        rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
-        rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
-                                   + args.sample_type + neuron_nums_str + '.csv', header=None)
-
-        if args.dataset_name == 'ipinyou/':
-            logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,
-                                                                                      args.campaign_id,
-                                                                                      args.model_name, final_auc))
-        else:
-            logger.info(
-                'Dataset {}, models {}, ensemble auc {}\n'.format(args.dataset_name, args.model_name, final_auc))

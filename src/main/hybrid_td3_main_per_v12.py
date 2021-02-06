@@ -125,8 +125,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         with_clk_rewards = torch.where(
             current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
                 current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1e-1,
-            current_basic_rewards[current_with_clk_indexs] * -1e-1
+            current_basic_rewards[current_with_clk_indexs] * 1,
+            current_basic_rewards[current_with_clk_indexs] * -1
         )
 
         # with_clk_rewards = torch.log(current_y_preds[current_with_clk_indexs])
@@ -134,8 +134,8 @@ def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_act
         without_clk_rewards = torch.where(
             current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
                 current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1e-1,
-            current_basic_rewards[current_without_clk_indexs] * -1e-1
+            current_basic_rewards[current_without_clk_indexs] * 1,
+            current_basic_rewards[current_without_clk_indexs] * -1
         )
 
         # without_clk_rewards = torch.log(torch.ones_like(labels[current_without_clk_indexs]).float() -
@@ -256,14 +256,14 @@ def get_dataset(args):
     datapath = args.data_path + args.dataset_name + args.campaign_id
 
     columns = ['label'] + args.ensemble_models.split(',')
-    train_data = pd.read_csv(datapath + 'train.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
+    train_data = pd.read_csv(datapath + 'val.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
     val_data = pd.read_csv(datapath + 'val.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
     test_data = pd.read_csv(datapath + 'test.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
 
     return train_data, val_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
 
     train_data, val_data, test_data = get_dataset(args)
@@ -346,7 +346,7 @@ if __name__ == '__main__':
     early_stop_index = 0
     intime_steps = 0
 
-    record_list = {}
+    record_list = []
 
     # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
     # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
@@ -379,16 +379,15 @@ if __name__ == '__main__':
         rl_model.store_transition(transitions)
 
         if intime_steps % gap == 0:
-            val_auc, val_predicts, val_rewards, val_actions, val_prob_weights = test(rl_model, args.ensemble_nums, val_data_loader, device)
             auc, predicts, test_rewards, actions, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
 
-            record_list[np.mod(record_param_steps, args.rl_early_stop_iter)] = [auc, predicts, actions, prob_weights]
+            record_list = [auc, predicts, actions, prob_weights]
 
-            logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, test auc {}, [{}s]'.format(
-                args.rl_model_name, intime_steps, val_auc, val_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
-            val_rewards_records.append(val_rewards)
+            logger.info('Model {}, timesteps {}, val rewards {}, val auc {}, [{}s]'.format(
+                args.rl_model_name, intime_steps, test_rewards, auc, (datetime.datetime.now() - train_start_time).seconds))
+            val_rewards_records.append(rewards)
             timesteps.append(intime_steps)
-            val_aucs.append(val_auc)
+            val_aucs.append(auc)
 
             train_critics.append(tmp_train_ctritics)
 
@@ -399,7 +398,7 @@ if __name__ == '__main__':
             #                           rl_model.memory.beta + gap *
             #                            (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
-            early_aucs.append([record_param_steps, val_auc])
+            early_aucs.append([record_param_steps, auc])
             early_rewards.append([record_param_steps, test_rewards])
             torch.save(rl_model.Hybrid_Actor.state_dict(),
                        args.save_param_dir + args.campaign_id + args.rl_model_name + str(
@@ -441,7 +440,7 @@ if __name__ == '__main__':
 
     # test_predicts, test_auc, test_actions, test_prob_weights = submission(test_rl_model, args.ensemble_nums, test_data_loader,
     #                                                                       device)
-    test_auc, test_predicts, test_actions, test_prob_weights = record_list[early_stop_index]
+    test_auc, test_predicts, test_actions, test_prob_weights = record_list[0], record_list[1], record_list[2], record_list[3]
 
     # for i in range(args.rl_early_stop_iter):
     #     os.remove(args.save_param_dir + args.campaign_id + args.rl_model_name + str(i) + '.pth')
