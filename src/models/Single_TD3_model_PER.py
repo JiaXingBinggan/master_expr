@@ -291,15 +291,12 @@ class TD3_Model():
             action_means = self.Actor.act(state.to(self.device))
             res_actions = torch.clamp(action_means + torch.randn_like(action_means) * 0.1, -1.0, 1.0)
 
-        self.Actor.train()
-
         return res_actions,  torch.softmax(res_actions, dim=-1)
 
     def choose_best_action(self, state):
         self.Actor.eval()
         with torch.no_grad():
             action_means = self.Actor.evaluate(state)
-        self.Actor.train()
 
         return action_means, torch.softmax(action_means, dim=-1)
 

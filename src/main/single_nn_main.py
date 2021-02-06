@@ -51,14 +51,14 @@ class Weight_Training(nn.Module):
     def forward(self, input):
         weights = self.mlp(input)
 
-        out = torch.mul(weights, input).mean(dim=-1)
+        out = torch.sum(torch.mul(weights, input), dim=-1)
 
         return out
 
     def evaluate(self, input):
         weights = self.mlp(input)
 
-        out = torch.mul(weights, input).mean(dim=-1)
+        out = torch.sum(torch.mul(weights, input), dim=-1)
 
         return out, weights
 

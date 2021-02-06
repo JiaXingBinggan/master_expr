@@ -40,7 +40,7 @@ def get_model(action_nums, args, device):
 
 def generate_preds(pretrain_y_preds, ensemble_c_actions,
                    labels, device):
-    model_y_preds = torch.mul(ensemble_c_actions, pretrain_y_preds).mean(dim=-1).view(-1, 1)
+    model_y_preds = torch.sum(torch.mul(ensemble_c_actions, pretrain_y_preds), dim=-1).view(-1, 1)
     pretrain_y_pred_means = pretrain_y_preds.mean(dim=-1).view(-1, 1)
 
     with_clk_indexs = (labels == 1).nonzero()[:, 0]
@@ -48,20 +48,17 @@ def generate_preds(pretrain_y_preds, ensemble_c_actions,
 
     basic_rewards = torch.ones_like(labels).float()
 
-    with_clk_rewards = torch.where(
+    basic_rewards[with_clk_indexs] = torch.where(
         model_y_preds[with_clk_indexs] > pretrain_y_pred_means[with_clk_indexs],
         basic_rewards[with_clk_indexs] * 1,
         basic_rewards[with_clk_indexs] * -1
     )
 
-    without_clk_rewards = torch.where(
+    basic_rewards[without_clk_indexs] = torch.where(
         model_y_preds[without_clk_indexs] < pretrain_y_pred_means[without_clk_indexs],
         basic_rewards[without_clk_indexs] * 1,
         basic_rewards[without_clk_indexs] * -1
     )
-    # print(ensemble_c_actions[without_clk_indexs], model_y_preds[without_clk_indexs], pretrain_y_pred_means[without_clk_indexs])
-    basic_rewards[with_clk_indexs] = with_clk_rewards
-    basic_rewards[without_clk_indexs] = without_clk_rewards
 
     return_ctrs = torch.mul(ensemble_c_actions, pretrain_y_preds)
 

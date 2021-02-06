@@ -64,8 +64,8 @@ def init_parser(campaign_id):
 
     # for RL training
     parser.add_argument('--rl_model_name', default='H_RL_CTR')
-    parser.add_argument('--init_lr_a', type=float, default=1e-3)
-    parser.add_argument('--init_lr_c', type=float, default=1e-3)
+    parser.add_argument('--init_lr_a', type=float, default=3e-4)
+    parser.add_argument('--init_lr_c', type=float, default=3e-4)
     parser.add_argument('--neuron_nums', type=list, default=[200, 100]) # 1458 and 2259 [64], [64, 64], [32, 64, 16]
     # 3386 [64], [64, 32], [32, 64, 16]
     parser.add_argument('--tau', type=float, default=0.0005)
