@@ -260,7 +260,7 @@ if __name__ == '__main__':
         nn_model = get_model(args, device)
         loss = nn.BCELoss()
 
-        optimizer = torch.optim.Adam(params=nn_model.parameters(), lr=args.learning_rate, weight_decay=1e-3)
+        optimizer = torch.optim.Adam(params=nn_model.parameters(), lr=args.learning_rate, weight_decay=1e-2)
 
         train_losses = []
 
