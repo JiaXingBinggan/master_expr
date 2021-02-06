@@ -72,9 +72,12 @@ def get_dataset(args):
 
 
 if __name__ == '__main__':
-    campaign_id = '1458/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/' # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     test_data = get_dataset(args)
+
+    if campaign_id == '2259/' and args.ensemble_nums == 3:
+        args.ensemble_models = 'FM,IPNN,DeepFM'
 
     # 设置随机数种子
     setup_seed(args.seed)
