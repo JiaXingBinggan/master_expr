@@ -7,7 +7,7 @@ import argparse
 import random
 from sklearn.metrics import roc_auc_score
 import src.models.p_model as Model
-import src.models.Single_TD3_model_PER as td3_model
+import src.models.Single_TD3_model_PER_gumbel as td3_model
 import src.models.creat_data as Data
 from src.models.Feature_embedding import Feature_Embedding
 
@@ -38,10 +38,17 @@ def get_model(action_nums, args, device):
 
     return RL_model
 
-def generate_preds(pretrain_y_preds, ensemble_c_actions,
+def generate_preds(pretrain_y_preds, ensemble_nums, actions,
                    labels, device):
-    model_y_preds = torch.sum(torch.mul(ensemble_c_actions, pretrain_y_preds), dim=-1).view(-1, 1)
     pretrain_y_pred_means = pretrain_y_preds.mean(dim=-1).view(-1, 1)
+    model_y_preds = torch.zeros_like(labels).float()
+    return_ctrs = torch.zeros_like(pretrain_y_preds).float()
+    for i in range(1, ensemble_nums + 1):
+        with_action_indexs = (actions == i).nonzero()[:, 0]
+
+        model_y_preds[with_action_indexs, :] = pretrain_y_preds[with_action_indexs, :i].mean(dim=-1).view(-1, 1)
+
+        return_ctrs[with_action_indexs, :i] = pretrain_y_preds[with_action_indexs, :i] / i
 
     with_clk_indexs = (labels == 1).nonzero()[:, 0]
     without_clk_indexs = (labels == 0).nonzero()[:, 0]
@@ -59,9 +66,8 @@ def generate_preds(pretrain_y_preds, ensemble_c_actions,
         basic_rewards[without_clk_indexs] * 1,
         basic_rewards[without_clk_indexs] * -1
     )
-
-    return_ctrs = torch.mul(ensemble_c_actions, pretrain_y_preds)
-
+        
+    
     return model_y_preds, basic_rewards, return_ctrs
 
 
@@ -69,7 +75,7 @@ def test(rl_model, ensemble_nums, data_loader, device):
     targets, predicts = list(), list()
     intervals = 0
     test_rewards = torch.FloatTensor().to(device)
-    final_prob_weights = torch.FloatTensor().to(device)
+    final_actions = torch.FloatTensor().to(device)
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
             current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(
@@ -77,9 +83,9 @@ def test(rl_model, ensemble_nums, data_loader, device):
 
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
-            c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
+            d_actions, actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, ensemble_c_actions, labels, device)
+            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels, device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
@@ -87,30 +93,30 @@ def test(rl_model, ensemble_nums, data_loader, device):
 
             test_rewards = torch.cat([test_rewards, rewards], dim=0)
 
-            final_prob_weights = torch.cat([final_prob_weights, ensemble_c_actions], dim=0)
+            final_actions = torch.cat([final_actions, actions.float()], dim=0)
 
-    return roc_auc_score(targets, predicts), predicts, test_rewards.mean().item(), final_prob_weights
+    return roc_auc_score(targets, predicts), predicts, test_rewards.mean().item(), final_actions
 
 
 def submission(rl_model, ensemble_nums, data_loader, device):
     targets, predicts = list(), list()
-    final_prob_weights = torch.FloatTensor().to(device)
+    final_actions = torch.FloatTensor().to(device)
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
             current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(device)
 
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
-            c_actions, ensemble_c_actions = rl_model.choose_best_action(s_t)
+            d_actions, actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, ensemble_c_actions, labels, device)
+            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels, device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
 
-            final_prob_weights = torch.cat([final_prob_weights, ensemble_c_actions], dim=0)
+            final_actions = torch.cat([final_actions, actions.float()], dim=0)
 
-    return predicts, roc_auc_score(targets, predicts), final_prob_weights.cpu().numpy()
+    return predicts, roc_auc_score(targets, predicts), final_actions.cpu().numpy()
 
 def get_ensemble_model(model_name, feature_nums, field_nums, latent_dims):
     if model_name == 'LR':
@@ -171,11 +177,13 @@ def get_dataset(args):
     return train_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '2259/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-    args.rl_model_name = 'S_RL_CTR'
-    if campaign_id == '2259/' and args.ensemble_nums == 3:
-        args.ensemble_models = 'FM,IPNN,DeepFM'
+    args.rl_model_name = 'S_RL_CTR_GUMBEL'
+    if args.ensemble_nums == 5:
+        args.ensemble_models = 'DCN,DeepFM,IPNN,FM,LR'
+    elif args.ensemble_nums == 3:
+        args.ensemble_models = 'DCN,DeepFM,IPNN'
 
     train_data, test_data = get_dataset(args)
 
@@ -268,15 +276,15 @@ if __name__ == '__main__':
 
                 s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
-                c_actions, ensemble_c_actions = rl_model.choose_action(
+                d_actions, actions = rl_model.choose_action(
                     s_t)
 
-                y_preds, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, ensemble_c_actions, labels, device)
+                y_preds, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels, device)
 
                 s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
                 transitions = torch.cat(
-                    [s_t, c_actions, rewards, s_t_],
+                    [s_t, d_actions, rewards, s_t_],
                     dim=1)
 
                 rl_model.store_transition(transitions)
@@ -287,8 +295,8 @@ if __name__ == '__main__':
                         tmp_train_ctritics = critic_loss
 
                 if intime_steps % gap == 0:
-                    auc, predicts, test_rewards, prob_weights = test(rl_model, args.ensemble_nums, test_data_loader, device)
-                    record_list = [auc, predicts, prob_weights]
+                    auc, predicts, test_rewards, actions = test(rl_model, args.ensemble_nums, test_data_loader, device)
+                    record_list = [auc, predicts, actions]
 
                     logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, [{}s]'.format(
                         args.rl_model_name, intime_steps, auc, test_rewards, (datetime.datetime.now() - train_start_time).seconds))
@@ -297,15 +305,19 @@ if __name__ == '__main__':
                     val_aucs.append(auc)
 
                     train_critics.append(tmp_train_ctritics)
+                    rl_model.temprature = max(rl_model.temprature_min,
+                                              rl_model.temprature - gap *
+                                              (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
+
                     rl_model.memory.beta = min(rl_model.memory.beta_max,
                                               rl_model.memory.beta + gap *
                                                (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
                     early_aucs.append([record_param_steps, auc])
                     early_rewards.append([record_param_steps, test_rewards])
-                    torch.save(rl_model.Actor.state_dict(),
-                               args.save_param_dir + args.campaign_id + args.rl_model_name + str(
-                                   np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
+                    # torch.save(rl_model.Actor.state_dict(),
+                    #            args.save_param_dir + args.shi + args.rl_model_name + str(
+                    #                np.mod(record_param_steps, args.rl_early_stop_iter)) + '.pth')
 
                     record_param_steps += 1
                     if args.run_steps <= intime_steps <= args.stop_steps:
@@ -325,7 +337,7 @@ if __name__ == '__main__':
             要不要早停
             '''
 
-            test_auc, test_predicts, test_prob_weights = \
+            test_auc, test_predicts, test_actions = \
                 record_list[0], record_list[1], record_list[2].cpu().numpy()
 
             logger.info('Model {}, test auc {}, [{}s]'.format(args.rl_model_name,
@@ -334,8 +346,8 @@ if __name__ == '__main__':
 
             neuron_nums_str = '_'.join(map(str, args.neuron_nums))
 
-            prob_weights_df = pd.DataFrame(data=test_prob_weights)
-            prob_weights_df.to_csv(submission_path + 'test_prob_weights_' + str(args.ensemble_nums) + '_'
+            actions_df = pd.DataFrame(data=test_actions)
+            actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
                                    + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
 
             valid_aucs_df = pd.DataFrame(data=val_aucs)

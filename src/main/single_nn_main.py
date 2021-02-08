@@ -211,7 +211,7 @@ def get_dataset(args):
     return train_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     args.model_name = 'S_NN_CTR'
     if campaign_id == '2259/' and args.ensemble_nums == 3:
