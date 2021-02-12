@@ -51,7 +51,8 @@ def data_to_csv(datapath, is_to_csv):
     day_to_weekday = {4: '6', 5: '7', 6: '8', 0: '9', 1: '10', 2: '11', 3: '12'}
     train_data = pd.read_csv(data_path)
     train_data.iloc[:, 1] = train_data.iloc[:, 1].astype(int)
-    if datapath.split('/')[-2] == '2259' or datapath.split('/')[-2] == '2997':
+    if datapath.split('/')[-2] == '2259' or datapath.split('/')[-2] == '2997' \
+            or datapath.split('/')[-2] == '2261' or datapath.split('/')[-2] == '2821' or datapath.split('/')[-2] == '3476':
         train_len = len(train_data)
         train_split = int(train_len * 0.8)
 
@@ -516,7 +517,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', default='../../data/')
     parser.add_argument('--dataset_name', default='ipinyou/', help='ipinyou, cretio, yoyi')
-    parser.add_argument('--campaign_id', default='2997/', help='1458, 3358, 3386, 3427, 3476')
+    parser.add_argument('--campaign_id', default='3476/', help='1458, 3358, 3386, 3427, 3476')
     parser.add_argument('--is_to_csv', default=True)
 
     setup_seed(1)

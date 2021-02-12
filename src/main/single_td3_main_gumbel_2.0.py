@@ -33,10 +33,11 @@ def setup_seed(seed):
 def get_model(action_nums, args, device):
     RL_model = td3_model.TD3_Model(neuron_nums=args.neuron_nums,
                                    action_nums=action_nums, lr_A=args.init_lr_a, lr_C=args.init_lr_c,
-                                          batch_size=args.rl_batch_size,
-                                          memory_size=args.memory_size, random_seed=args.seed, device=device)
+                                   batch_size=args.rl_batch_size,
+                                   memory_size=args.memory_size, random_seed=args.seed, device=device)
 
     return RL_model
+
 
 def generate_preds(pretrain_y_preds, ensemble_nums, actions,
                    labels, device):
@@ -46,9 +47,38 @@ def generate_preds(pretrain_y_preds, ensemble_nums, actions,
     for i in range(1, ensemble_nums + 1):
         with_action_indexs = (actions == i).nonzero()[:, 0]
 
-        model_y_preds[with_action_indexs, :] = pretrain_y_preds[with_action_indexs, :i].mean(dim=-1).view(-1, 1)
+        with_clk_indexs = (labels[with_action_indexs, :] == 1).nonzero()[:, 0]
+        without_clk_indexs = (labels[with_action_indexs, :] == 0).nonzero()[:, 0]
 
-        return_ctrs[with_action_indexs, :i] = pretrain_y_preds[with_action_indexs, :i] / i
+        current_pretrain_y_preds = pretrain_y_preds[with_action_indexs, :]
+
+        current_pretrain_y_preds_with_clks, current_pretrain_y_preds_with_clk_indexs\
+            = torch.sort(-current_pretrain_y_preds[with_clk_indexs, :])
+        current_pretrain_y_preds_without_clks, current_pretrain_y_preds_without_clk_indexs\
+            = torch.sort((current_pretrain_y_preds[without_clk_indexs, :]))
+
+        current_row_pred_with_clks = torch.zeros(size=[len(with_clk_indexs), ensemble_nums]).to(device)
+        current_row_pred_without_clks = torch.zeros(size=[len(without_clk_indexs), ensemble_nums]).to(device)
+        current_row_preds = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
+        for m in range(i):
+            current_row_choose_models_clk = current_pretrain_y_preds_with_clk_indexs[:, m:m + 1]  # 这个和current_c_actions等长
+            current_row_choose_models_without_clk = current_pretrain_y_preds_without_clk_indexs[:, m:m + 1]  # 这个和current_c_actions等长
+
+            for k in range(ensemble_nums):
+                choose_model_indexs_clk = (current_row_choose_models_clk == k).nonzero()[:, 0]
+                choose_model_indexs_without_clk = (current_row_choose_models_without_clk == k).nonzero()[:, 0]
+
+                current_row_pred_with_clks[choose_model_indexs_clk, k: k + 1] = \
+                    current_pretrain_y_preds[with_clk_indexs, :][choose_model_indexs_clk, k: k + 1]
+
+                current_row_pred_without_clks[choose_model_indexs_without_clk, k: k + 1] = \
+                    current_pretrain_y_preds[without_clk_indexs, :][choose_model_indexs_without_clk, k: k + 1]
+        current_row_preds[with_clk_indexs, :] = current_row_pred_with_clks
+        current_row_preds[without_clk_indexs, :] = current_row_pred_without_clks
+
+        model_y_preds[with_action_indexs, :] = current_row_preds.mean(dim=-1).view(-1, 1)
+
+        return_ctrs[with_action_indexs, :] = current_row_preds / i
 
     with_clk_indexs = (labels == 1).nonzero()[:, 0]
     without_clk_indexs = (labels == 0).nonzero()[:, 0]
@@ -77,14 +107,16 @@ def test(rl_model, ensemble_nums, data_loader, device):
     final_actions = torch.FloatTensor().to(device)
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
-            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(
+            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels,
+                                                                                                            1).to(
                 device)
 
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
             d_actions, actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels, device)
+            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels,
+                                                     device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
@@ -102,13 +134,16 @@ def submission(rl_model, ensemble_nums, data_loader, device):
     final_actions = torch.FloatTensor().to(device)
     with torch.no_grad():
         for i, (current_pretrain_y_preds, labels) in enumerate(data_loader):
-            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels, 1).to(device)
+            current_pretrain_y_preds, labels = current_pretrain_y_preds.float().to(device), torch.unsqueeze(labels,
+                                                                                                            1).to(
+                device)
 
             s_t = torch.cat([current_pretrain_y_preds.mean(dim=-1).view(-1, 1), current_pretrain_y_preds], dim=-1)
 
             d_actions, actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels, device)
+            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels,
+                                                     device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
             predicts.extend(y.tolist())
@@ -116,6 +151,7 @@ def submission(rl_model, ensemble_nums, data_loader, device):
             final_actions = torch.cat([final_actions, actions.float()], dim=0)
 
     return predicts, roc_auc_score(targets, predicts), final_actions.cpu().numpy()
+
 
 def get_ensemble_model(model_name, feature_nums, field_nums, latent_dims):
     if model_name == 'LR':
@@ -139,6 +175,7 @@ def get_ensemble_model(model_name, feature_nums, field_nums, latent_dims):
     elif model_name == 'AFM':
         return Model.AFM(feature_nums, field_nums, latent_dims)
 
+
 def get_list_data(inputs, batch_size, shuffle):
     '''
     :param inputs: List type
@@ -155,16 +192,20 @@ def get_list_data(inputs, batch_size, shuffle):
 
         yield batch_inputs
 
+
 def eva_stopping(valid_rewards, args):  # early stopping
     if len(valid_rewards) >= args.rl_early_stop_iter:
 
-        reward_campare_arrs = [valid_rewards[-i][1] < valid_rewards[-i - 1][1] for i in range(1, args.rl_early_stop_iter)]
-        reward_div_mean = sum([abs(valid_rewards[-i][1] - valid_rewards[-i - 1][1]) for i in range(1, args.rl_early_stop_iter)]) / args.rl_early_stop_iter
+        reward_campare_arrs = [valid_rewards[-i][1] < valid_rewards[-i - 1][1] for i in
+                               range(1, args.rl_early_stop_iter)]
+        reward_div_mean = sum([abs(valid_rewards[-i][1] - valid_rewards[-i - 1][1]) for i in
+                               range(1, args.rl_early_stop_iter)]) / args.rl_early_stop_iter
 
         if (False not in reward_campare_arrs) or (reward_div_mean <= args.reward_epsilon):
             return True
 
     return False
+
 
 def get_dataset(args):
     datapath = args.data_path + args.dataset_name + args.campaign_id
@@ -175,14 +216,14 @@ def get_dataset(args):
 
     return train_data, test_data
 
+
 if __name__ == '__main__':
-    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '2821/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-    args.rl_model_name = 'S_RL_CTR_GUMBEL'
-    if args.ensemble_nums == 5:
-        args.ensemble_models = 'DCN,DeepFM,IPNN,FM,LR'
-    elif args.ensemble_nums == 3:
-        args.ensemble_models = 'DCN,DeepFM,IPNN'
+    args.rl_model_name = 'S_RL_CTR_GUMBEL_2.0'
+
+    if campaign_id == '2259/' and args.ensemble_nums == 3:
+        args.ensemble_models = 'FM,IPNN,DeepFM'
 
     train_data, test_data = get_dataset(args)
 
@@ -190,7 +231,8 @@ if __name__ == '__main__':
     setup_seed(args.seed)
 
     logging.basicConfig(level=logging.DEBUG,
-                        filename=args.save_log_dir + str(args.campaign_id).strip('/') + args.rl_model_name + '_output.log',
+                        filename=args.save_log_dir + str(args.campaign_id).strip(
+                            '/') + args.rl_model_name + '_output.log',
                         datefmt='%Y/%m/%d %H:%M:%S',
                         format='%(asctime)s - %(name)s - %(levelname)s - %(lineno)d - %(module)s - %(message)s')
 
@@ -226,7 +268,8 @@ if __name__ == '__main__':
             logger.info(args)
 
             test_dataset = Data.libsvm_dataset(test_data[:, 1:], test_data[:, 0])
-            test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size, num_workers=8)
+            test_data_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.rl_gen_batch_size,
+                                                           num_workers=8)
 
             test_predict_arrs = []
 
@@ -254,7 +297,7 @@ if __name__ == '__main__':
 
             train_start_time = datetime.datetime.now()
 
-            is_sample_action = True # 是否在训练开始时完全使用随机动作
+            is_sample_action = True  # 是否在训练开始时完全使用随机动作
             is_val = False
 
             tmp_train_ctritics = 0
@@ -265,7 +308,7 @@ if __name__ == '__main__':
             intime_steps = 0
             # 设计为每隔rl_iter_size的次数训练以及在测试集上测试一次
             # 总的来说,对于ipinyou,训练集最大308万条曝光,所以就以500万次结果后,选取连续early_stop N 轮(N轮rewards没有太大变化)中auc最高的的模型进行生成
-            train_batch_gen = get_list_data(train_data, args.rl_iter_size, False)# 要不要早停
+            train_batch_gen = get_list_data(train_data, args.rl_iter_size, False)  # 要不要早停
             record_list = []
 
             while intime_steps <= args.stop_steps:
@@ -278,7 +321,8 @@ if __name__ == '__main__':
                 d_actions, actions = rl_model.choose_action(
                     s_t)
 
-                y_preds, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels, device)
+                y_preds, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions,
+                                                               labels, device)
 
                 s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
 
@@ -290,15 +334,16 @@ if __name__ == '__main__':
 
                 if intime_steps >= args.rl_batch_size:
                     # if intime_steps % 10 == 0:
-                        critic_loss = rl_model.learn()
-                        tmp_train_ctritics = critic_loss
+                    critic_loss = rl_model.learn()
+                    tmp_train_ctritics = critic_loss
 
                 if intime_steps % gap == 0:
                     auc, predicts, test_rewards, actions = test(rl_model, args.ensemble_nums, test_data_loader, device)
                     record_list = [auc, predicts, actions]
 
                     logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, [{}s]'.format(
-                        args.rl_model_name, intime_steps, auc, test_rewards, (datetime.datetime.now() - train_start_time).seconds))
+                        args.rl_model_name, intime_steps, auc, test_rewards,
+                        (datetime.datetime.now() - train_start_time).seconds))
                     val_rewards_records.append(test_rewards)
                     timesteps.append(intime_steps)
                     val_aucs.append(auc)
@@ -309,7 +354,7 @@ if __name__ == '__main__':
                                               (rl_model.temprature_max - rl_model.temprature_min) / args.run_steps)
 
                     rl_model.memory.beta = min(rl_model.memory.beta_max,
-                                              rl_model.memory.beta + gap *
+                                               rl_model.memory.beta + gap *
                                                (rl_model.memory.beta_max - rl_model.memory.beta_min) / args.run_steps)
 
                     early_aucs.append([record_param_steps, auc])
@@ -321,7 +366,8 @@ if __name__ == '__main__':
                     record_param_steps += 1
                     if args.run_steps <= intime_steps <= args.stop_steps:
                         if eva_stopping(early_rewards, args):
-                            max_auc_index = sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
+                            max_auc_index = \
+                            sorted(early_aucs[-args.rl_early_stop_iter:], key=lambda x: x[1], reverse=True)[0][0]
                             early_stop_index = np.mod(max_auc_index, args.rl_early_stop_iter)
                             is_early_stop = True
                             break
@@ -340,14 +386,14 @@ if __name__ == '__main__':
                 record_list[0], record_list[1], record_list[2].cpu().numpy()
 
             logger.info('Model {}, test auc {}, [{}s]'.format(args.rl_model_name,
-                                                                test_auc, (datetime.datetime.now() - start_time).seconds))
+                                                              test_auc, (datetime.datetime.now() - start_time).seconds))
             test_predict_arrs.append(test_predicts)
 
             neuron_nums_str = '_'.join(map(str, args.neuron_nums))
 
             actions_df = pd.DataFrame(data=test_actions)
             actions_df.to_csv(submission_path + 'test_actions_' + str(args.ensemble_nums) + '_'
-                                   + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
+                              + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
 
             valid_aucs_df = pd.DataFrame(data=val_aucs)
             valid_aucs_df.to_csv(submission_path + 'val_aucs_' + str(args.ensemble_nums) + '_'
@@ -356,7 +402,8 @@ if __name__ == '__main__':
             val_rewards_records = {'rewards': val_rewards_records, 'timesteps': timesteps}
             val_rewards_records_df = pd.DataFrame(data=val_rewards_records)
             val_rewards_records_df.to_csv(submission_path + 'val_reward_records_' + str(args.ensemble_nums) + '_'
-                                          + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', index=None)
+                                          + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv',
+                                          index=None)
 
             train_critics_df = pd.DataFrame(data=train_critics)
             train_critics_df.to_csv(submission_path + 'train_critics_' + str(args.ensemble_nums) + '_'
@@ -372,12 +419,14 @@ if __name__ == '__main__':
             rl_ensemble_aucs = [[final_auc]]
             rl_ensemble_aucs_df = pd.DataFrame(data=rl_ensemble_aucs)
             rl_ensemble_aucs_df.to_csv(submission_path + 'ensemble_aucs_' + str(args.ensemble_nums) + '_'
-                                       + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv', header=None)
+                                       + args.sample_type + neuron_nums_str + '_' + str(args.seed) + '.csv',
+                                       header=None)
 
             if args.dataset_name == 'ipinyou/':
                 logger.info('Dataset {}, campain {}, models {}, ensemble auc {}\n'.format(args.dataset_name,
                                                                                           args.campaign_id,
-                                                                                          args.rl_model_name, final_auc))
+                                                                                          args.rl_model_name,
+                                                                                          final_auc))
             else:
                 logger.info(
                     'Dataset {}, models {}, ensemble auc {}\n'.format(args.dataset_name, args.rl_model_name, final_auc))

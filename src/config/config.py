@@ -50,7 +50,7 @@ def init_parser(campaign_id):
     parser.add_argument('--loss_epsilon', type=float, default=1e-6)
     parser.add_argument('--auc_epsilon', type=float, default=1e-5)
     parser.add_argument('--batch_size', type=int, default=1024)
-    parser.add_argument('--test_batch_size', type=int, default=4096 * 8)
+    parser.add_argument('--test_batch_size', type=int, default=4096)
     parser.add_argument('--device', default='cuda:0')
     parser.add_argument('--save_param_dir', default='../models/model_params/')
     parser.add_argument('--save_log_dir', default='../main/logs/')

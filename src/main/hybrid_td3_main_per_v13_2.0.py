@@ -264,6 +264,7 @@ def get_dataset(args):
 if __name__ == '__main__':
     campaign_id = '3476/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
+    args.rl_model_name = 'H_RL_CTR_2.0'
 
     if campaign_id == '2259/' and args.ensemble_nums == 3:
         args.ensemble_models = 'FM,IPNN,DeepFM'
