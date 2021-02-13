@@ -46,108 +46,99 @@ def get_model(args, device):
 
 def generate_preds(ensemble_nums, pretrain_y_preds, actions, prob_weights, c_actions,
                    labels, device, mode):
-    y_preds = torch.ones_like(actions, dtype=torch.float)
-    rewards = torch.ones_like(actions, dtype=torch.float)
+    pretrain_y_pred_means = pretrain_y_preds.mean(dim=-1).view(-1, 1)
+    model_y_preds = torch.zeros_like(labels).float()
+    return_ctrs = torch.zeros_like(pretrain_y_preds).float()
+    return_c_actions = torch.zeros_like(pretrain_y_preds).float()
 
-    sort_prob_weights, sortindex_prob_weights = torch.sort(-prob_weights, dim=1)
-
-    return_c_actions = torch.zeros(size=(pretrain_y_preds.size()[0], ensemble_nums)).to(device)
-    return_ctrs = torch.zeros(size=(pretrain_y_preds.size()[0], ensemble_nums)).to(device)
-
-    choose_model_lens = range(1, ensemble_nums + 1)
-    for i in choose_model_lens:  # 根据ddqn_model的action,判断要选择ensemble的数量
+    for i in range(1, ensemble_nums + 1):
         with_action_indexs = (actions == i).nonzero()[:, 0]
-        current_choose_models = sortindex_prob_weights[with_action_indexs][:, :i]
-        current_basic_rewards = torch.ones(size=[len(with_action_indexs), 1]).to(device) * 1
-        current_prob_weights = prob_weights[with_action_indexs]
 
-        current_with_clk_indexs = (labels[with_action_indexs] == 1).nonzero()[:, 0]
-        current_without_clk_indexs = (labels[with_action_indexs] == 0).nonzero()[:, 0]
+        with_clk_indexs = (labels[with_action_indexs, :] == 1).nonzero()[:, 0]
+        without_clk_indexs = (labels[with_action_indexs, :] == 0).nonzero()[:, 0]
 
         current_pretrain_y_preds = pretrain_y_preds[with_action_indexs, :]
 
-        current_c_actions = c_actions[with_action_indexs, :]
-        current_ctrs = current_pretrain_y_preds
-        if i == ensemble_nums:
-            current_y_preds = torch.sum(torch.mul(current_prob_weights, current_pretrain_y_preds), dim=1).view(-1, 1)
-            y_preds[with_action_indexs, :] = current_y_preds
+        current_pretrain_y_preds_with_clks, current_pretrain_y_preds_with_clk_indexs \
+            = torch.sort(-current_pretrain_y_preds[with_clk_indexs, :])
+        current_pretrain_y_preds_without_clks, current_pretrain_y_preds_without_clk_indexs \
+            = torch.sort((current_pretrain_y_preds[without_clk_indexs, :]))
 
-            return_c_actions[with_action_indexs, :] = current_c_actions
-            return_ctrs[with_action_indexs, :] = current_ctrs
-        elif i == 1:
-            current_y_preds = torch.ones(size=[len(with_action_indexs), 1]).to(device)
-            current_c_actions_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-            current_ctrs_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
+        current_row_pred_with_clks = torch.zeros(size=[len(with_clk_indexs), ensemble_nums]).to(device)
+        current_row_pred_without_clks = torch.zeros(size=[len(without_clk_indexs), ensemble_nums]).to(device)
+        current_row_preds = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
+
+        current_return_c_action_with_clks = torch.zeros(size=[len(with_clk_indexs), ensemble_nums]).to(device)
+        current_return_c_action_without_clks = torch.zeros(size=[len(without_clk_indexs), ensemble_nums]).to(device)
+        current_return_c_actions = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
+
+        current_return_prob_with_clks = torch.zeros(size=[len(with_clk_indexs), ensemble_nums]).to(device)
+        current_return_prob_without_clks = torch.zeros(size=[len(without_clk_indexs), ensemble_nums]).to(device)
+        current_return_probs = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
+
+        for m in range(i):
+            current_row_choose_models_clk = current_pretrain_y_preds_with_clk_indexs[:,
+                                            m:m + 1]  # 这个和current_c_actions等长
+            current_row_choose_models_without_clk = current_pretrain_y_preds_without_clk_indexs[:,
+                                                    m:m + 1]  # 这个和current_c_actions等长
+
             for k in range(ensemble_nums):
-                choose_model_indexs = (current_choose_models == k).nonzero()[:, 0] # 找出下标
-                current_y_preds[choose_model_indexs, 0] = current_pretrain_y_preds[choose_model_indexs, k]
+                choose_model_indexs_clk = (current_row_choose_models_clk == k).nonzero()[:, 0]
+                choose_model_indexs_without_clk = (current_row_choose_models_without_clk == k).nonzero()[:, 0]
 
-                current_c_actions_temp[choose_model_indexs, k] = current_c_actions[choose_model_indexs, k]
+                current_row_pred_with_clks[choose_model_indexs_clk, k: k + 1] = \
+                    current_pretrain_y_preds[with_clk_indexs, :][choose_model_indexs_clk, k: k + 1]
 
-                current_ctrs_temp[choose_model_indexs, k] = current_ctrs[choose_model_indexs, k]
+                current_row_pred_without_clks[choose_model_indexs_without_clk, k: k + 1] = \
+                    current_pretrain_y_preds[without_clk_indexs, :][choose_model_indexs_without_clk, k: k + 1]
 
-            y_preds[with_action_indexs, :] = current_y_preds
-            return_c_actions[with_action_indexs, :] = current_c_actions_temp
-            return_ctrs[with_action_indexs, :] = current_ctrs_temp
-        else:
-            current_softmax_weights = torch.softmax(
-                sort_prob_weights[with_action_indexs][:, :i] * -1, dim=1
-            ).to(device)  # 再进行softmax
+                current_return_c_action_with_clks[choose_model_indexs_clk, k: k + 1] = \
+                    c_actions[with_clk_indexs, :][choose_model_indexs_clk, k: k + 1]
 
-            current_row_preds = torch.ones(size=[len(with_action_indexs), i]).to(device)
-            current_c_actions_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-            current_ctrs_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
-            current_softmax_weights_temp = torch.zeros(size=[len(with_action_indexs), ensemble_nums]).to(device)
+                current_return_c_action_without_clks[choose_model_indexs_without_clk, k: k + 1] = \
+                    c_actions[without_clk_indexs, :][choose_model_indexs_without_clk, k: k + 1]
 
-            for m in range(i):
-                current_row_choose_models = current_choose_models[:, m:m + 1]  # 这个和current_c_actions等长
+                current_return_prob_with_clks[choose_model_indexs_clk, k: k + 1] = \
+                    torch.exp(c_actions[with_clk_indexs, :][choose_model_indexs_clk, k: k + 1])
+        
+                current_return_prob_without_clks[choose_model_indexs_without_clk, k: k + 1] = \
+                    torch.exp(c_actions[without_clk_indexs, :][choose_model_indexs_without_clk, k: k + 1])
 
-                for k in range(ensemble_nums):
-                    current_pretrain_y_pred = current_pretrain_y_preds[:, k: k + 1]
-                    choose_model_indexs = (current_row_choose_models == k).nonzero()[:, 0]
+        current_row_preds[with_clk_indexs, :] = current_row_pred_with_clks
+        current_row_preds[without_clk_indexs, :] = current_row_pred_without_clks
 
-                    current_row_preds[choose_model_indexs, m:m + 1] = current_pretrain_y_pred[choose_model_indexs]
+        current_return_c_actions[with_clk_indexs, :] = current_return_c_action_with_clks
+        current_return_c_actions[without_clk_indexs, :] = current_return_c_action_without_clks
 
-                    current_c_actions_temp[choose_model_indexs, k:k + 1] = current_c_actions[choose_model_indexs,
-                                                                           k: k + 1]
+        current_return_probs[with_clk_indexs, :] = current_return_prob_with_clks
+        current_return_probs[without_clk_indexs, :] = current_return_prob_without_clks
 
-                    current_ctrs_temp[choose_model_indexs, k: k + 1] = current_ctrs[choose_model_indexs, k: k + 1]
+        current_soft_probs = torch.div(current_return_probs, torch.sum(current_return_probs, dim=-1, keepdim=True))
 
-                    current_softmax_weights_temp[choose_model_indexs, k: k + 1] = current_softmax_weights[
-                                                                                  choose_model_indexs, m: m + 1]
+        model_y_preds[with_action_indexs, :] = torch.sum(torch.mul(current_soft_probs, current_row_preds), dim=-1, keepdim=True)
 
-            current_y_preds = torch.sum(torch.mul(current_softmax_weights, current_row_preds), dim=1).view(-1, 1)
-            y_preds[with_action_indexs, :] = current_y_preds
+        return_ctrs[with_action_indexs, :] = torch.mul(current_soft_probs, current_row_preds)
 
-            return_c_actions[with_action_indexs, :] = current_c_actions_temp  # 为了让没有使用到的位置,值置为0
-            return_ctrs[with_action_indexs, :] = torch.mul(current_softmax_weights_temp, current_ctrs_temp)
+        return_c_actions[with_action_indexs, :] = current_return_c_actions
 
-        with_clk_rewards = torch.where(
-            current_y_preds[current_with_clk_indexs] > current_pretrain_y_preds[
-                current_with_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_with_clk_indexs] * 1,
-            current_basic_rewards[current_with_clk_indexs] * -1
-        )
+    with_clk_indexs = (labels == 1).nonzero()[:, 0]
+    without_clk_indexs = (labels == 0).nonzero()[:, 0]
 
-        # with_clk_rewards = torch.log(current_y_preds[current_with_clk_indexs])
+    basic_rewards = torch.ones_like(labels).float()
 
-        without_clk_rewards = torch.where(
-            current_y_preds[current_without_clk_indexs] < current_pretrain_y_preds[
-                current_without_clk_indexs].mean(dim=1).view(-1, 1),
-            current_basic_rewards[current_without_clk_indexs] * 1,
-            current_basic_rewards[current_without_clk_indexs] * -1
-        )
+    basic_rewards[with_clk_indexs] = torch.where(
+        model_y_preds[with_clk_indexs] > pretrain_y_pred_means[with_clk_indexs],
+        basic_rewards[with_clk_indexs] * 1,
+        basic_rewards[with_clk_indexs] * -1
+    )
 
-        # without_clk_rewards = torch.log(torch.ones_like(labels[current_without_clk_indexs]).float() -
-        #                        current_y_preds[[current_without_clk_indexs]])
+    basic_rewards[without_clk_indexs] = torch.where(
+        model_y_preds[without_clk_indexs] < pretrain_y_pred_means[without_clk_indexs],
+        basic_rewards[without_clk_indexs] * 1,
+        basic_rewards[without_clk_indexs] * -1
+    )
 
-        current_basic_rewards[current_with_clk_indexs] = with_clk_rewards
-        current_basic_rewards[current_without_clk_indexs] = without_clk_rewards
-
-        rewards[with_action_indexs, :] = current_basic_rewards
-
-    return y_preds, rewards, return_c_actions, return_ctrs
-
+    return model_y_preds, basic_rewards, return_c_actions, return_ctrs
 
 def test(rl_model, ensemble_nums, data_loader, device):
     targets, predicts = list(), list()
@@ -175,7 +166,7 @@ def test(rl_model, ensemble_nums, data_loader, device):
             test_rewards = torch.cat([test_rewards, rewards], dim=0)
 
             final_actions = torch.cat([final_actions, actions], dim=0)
-            final_prob_weights = torch.cat([final_prob_weights, ensemble_c_actions], dim=0)
+            final_prob_weights = torch.cat([final_prob_weights, return_c_actions], dim=0)
 
     return roc_auc_score(targets, predicts), predicts, test_rewards.mean().item(), final_actions, final_prob_weights
 
@@ -199,7 +190,7 @@ def submission(rl_model, ensemble_nums, data_loader, device):
             predicts.extend(y.tolist())
 
             final_actions = torch.cat([final_actions, actions], dim=0)
-            final_prob_weights = torch.cat([final_prob_weights, ensemble_c_actions], dim=0)
+            final_prob_weights = torch.cat([final_prob_weights, return_c_actions], dim=0)
 
     return predicts, roc_auc_score(targets, predicts), final_actions.cpu().numpy(), final_prob_weights.cpu().numpy()
 
@@ -262,7 +253,7 @@ def get_dataset(args):
     return val_data, test_data
 
 if __name__ == '__main__':
-    campaign_id = '3476/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '3386/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     args.rl_model_name = 'H_RL_CTR_2.0'
 

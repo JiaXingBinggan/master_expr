@@ -218,7 +218,7 @@ def get_dataset(args):
 
 
 if __name__ == '__main__':
-    campaign_id = '2821/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '2997/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
     args.rl_model_name = 'S_RL_CTR_GUMBEL_2.0'
 
