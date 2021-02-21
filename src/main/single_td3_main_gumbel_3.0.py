@@ -39,7 +39,7 @@ def get_model(action_nums, args, device):
     return RL_model
 
 
-def generate_preds(pretrain_y_preds, ensemble_nums, actions,
+def generate_preds(thres, pretrain_y_preds, ensemble_nums, actions,
                    labels, device):
     pretrain_y_pred_means = pretrain_y_preds.mean(dim=-1).view(-1, 1)
     model_y_preds = torch.zeros_like(labels).float()
@@ -47,8 +47,8 @@ def generate_preds(pretrain_y_preds, ensemble_nums, actions,
     for i in range(1, ensemble_nums + 1):
         with_action_indexs = (actions == i).nonzero()[:, 0]
 
-        with_clk_indexs = (labels[with_action_indexs, :] == 1).nonzero()[:, 0]
-        without_clk_indexs = (labels[with_action_indexs, :] == 0).nonzero()[:, 0]
+        with_clk_indexs = (pretrain_y_pred_means[with_action_indexs, :] >= thres).nonzero()[:, 0]
+        without_clk_indexs = (pretrain_y_pred_means[with_action_indexs, :] < thres).nonzero()[:, 0]
 
         current_pretrain_y_preds = pretrain_y_preds[with_action_indexs, :]
 
@@ -100,7 +100,7 @@ def generate_preds(pretrain_y_preds, ensemble_nums, actions,
     return model_y_preds, basic_rewards, return_ctrs
 
 
-def test(rl_model, ensemble_nums, data_loader, device):
+def test(rl_model, thres, data_loader, device):
     targets, predicts = list(), list()
     intervals = 0
     test_rewards = torch.FloatTensor().to(device)
@@ -115,7 +115,7 @@ def test(rl_model, ensemble_nums, data_loader, device):
 
             d_actions, actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels,
+            y, rewards, return_ctrs = generate_preds(thres, current_pretrain_y_preds, args.ensemble_nums, actions, labels,
                                                      device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
@@ -129,7 +129,7 @@ def test(rl_model, ensemble_nums, data_loader, device):
     return roc_auc_score(targets, predicts), predicts, test_rewards.mean().item(), final_actions
 
 
-def submission(rl_model, ensemble_nums, data_loader, device):
+def submission(rl_model, thres, data_loader, device):
     targets, predicts = list(), list()
     final_actions = torch.FloatTensor().to(device)
     with torch.no_grad():
@@ -142,7 +142,7 @@ def submission(rl_model, ensemble_nums, data_loader, device):
 
             d_actions, actions = rl_model.choose_best_action(s_t)
 
-            y, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions, labels,
+            y, rewards, return_ctrs = generate_preds(thres, current_pretrain_y_preds, args.ensemble_nums, actions, labels,
                                                      device)
 
             targets.extend(labels.tolist())  # extend() 函数用于在列表末尾一次性追加另一个序列中的多个值（用新列表扩展原来的列表）。
@@ -212,20 +212,21 @@ def get_dataset(args):
 
     columns = ['label'] + args.ensemble_models.split(',')
     train_data = pd.read_csv(datapath + 'val.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
+    thres = np.sort(np.mean(train_data[:, 1:], axis=1))[-int(np.sum(train_data[:, 0]))]
     test_data = pd.read_csv(datapath + 'test.rl_ctr.' + args.sample_type + '.txt')[columns].values.astype(float)
 
-    return train_data, test_data
+    return train_data, test_data, thres
 
 
 if __name__ == '__main__':
-    campaign_id = '3427/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
+    campaign_id = '1458/'  # 1458, 2259, 3358, 3386, 3427, 3476, avazu
     args = config.init_parser(campaign_id)
-    args.rl_model_name = 'S_RL_CTR_GUMBEL_2.0'
+    args.rl_model_name = 'S_RL_CTR_GUMBEL_3.0'
 
     if campaign_id == '2259/' and args.ensemble_nums == 3:
         args.ensemble_models = 'FM,IPNN,DeepFM'
 
-    train_data, test_data = get_dataset(args)
+    train_data, test_data, thres = get_dataset(args)
 
     # 设置随机数种子
     setup_seed(args.seed)
@@ -321,7 +322,7 @@ if __name__ == '__main__':
                 d_actions, actions = rl_model.choose_action(
                     s_t)
 
-                y_preds, rewards, return_ctrs = generate_preds(current_pretrain_y_preds, args.ensemble_nums, actions,
+                y_preds, rewards, return_ctrs = generate_preds(thres, current_pretrain_y_preds, args.ensemble_nums, actions,
                                                                labels, device)
 
                 s_t_ = torch.cat([y_preds, return_ctrs], dim=-1)
@@ -338,7 +339,7 @@ if __name__ == '__main__':
                     tmp_train_ctritics = critic_loss
 
                 if intime_steps % gap == 0:
-                    auc, predicts, test_rewards, actions = test(rl_model, args.ensemble_nums, test_data_loader, device)
+                    auc, predicts, test_rewards, actions = test(rl_model, thres, test_data_loader, device)
                     record_list = [auc, predicts, actions]
 
                     logger.info('Model {}, timesteps {}, val auc {}, val rewards {}, [{}s]'.format(
