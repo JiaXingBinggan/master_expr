@@ -165,6 +165,8 @@ def reward_func(reward_type, fab_clks, hb_clks, fab_cost, hb_cost):
         return r / 1000
     elif reward_type == 'nop':
         return r
+    elif reward_type == 'nop_2.0':
+        return fab_clks / 1000
     else:
         return fab_clks
 

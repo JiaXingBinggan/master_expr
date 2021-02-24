@@ -38,12 +38,12 @@ def init_parser(campaign_id):
     parser.add_argument('--save_log_dir', default='logs/')
     parser.add_argument('--seed', type=int, default=1)
 
-    parser.add_argument('--sample_type', default='rand', help='all, rand')
+    parser.add_argument('--sample_type', default='all', help='all, rand')
 
     parser.add_argument('--budget', type=float, default=16e6)
-    parser.add_argument('--budget_para', type=list, default=[1/1], help='1,2,4,8')
+    parser.add_argument('--budget_para', type=list, default=[1/8], help='1,2,4,8')
 
-    parser.add_argument('--reward_type', type=str, default='op', help='op, nop, clk')
+    parser.add_argument('--reward_type', type=str, default='nop_2.0', help='op, nop_2.0, clk')
     # op 缩放，nop 不缩放，clk
 
     args = parser.parse_args()
